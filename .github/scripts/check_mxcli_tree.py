@@ -1,79 +1,89 @@
 #!/usr/bin/env python3
 """Check an installed mxcli binary's command tree against policy/mxcli-commands.json.
 
-Downloads the pinned v0.26.0 Linux release asset from
-https://api.github.com/repos/mendixlabs/mxcli/releases/tags/v0.26.0, runs
-`mxcli --help` recursively, and fails if the discovered command paths
+Downloads the raw binary from the pinned release (per policy/mxcli-pin.json,
+ADR-0032), verifies its SHA-256 against the pin, and runs `mxcli --help`
+recursively over the command tree. Fails if the discovered command paths
 disagree with the inventory.
 
 Usage (CI):
-    python .github/scripts/check_mxcli_tree.py --tag v0.26.0
+    python .github/scripts/check_mxcli_tree.py
+
+Env:
+    GITHUB_TOKEN   optional; raises the GitHub API rate limit when fetching
+                   release metadata (we only download the asset directly,
+                   so it is not strictly required, but the CI job sets it
+                   anyway).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import urllib.request
-import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PIN_PATH = REPO_ROOT / "policy" / "mxcli-pin.json"
+INVENTORY_PATH = REPO_ROOT / "policy" / "mxcli-commands.json"
 
 
-def _github(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+def _load_pin() -> dict:
+    return json.loads(PIN_PATH.read_text(encoding="utf-8"))["pin"]
+
+
+def _http_get(url: str) -> bytes:
+    req = urllib.request.Request(url)
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(req, timeout=30) as fh:
-        return json.loads(fh.read())
+    if "api.github.com" in url:
+        req.add_header("Accept", "application/vnd.github+json")
+    with urllib.request.urlopen(req, timeout=60) as fh:
+        return fh.read()
 
 
-def _find_linux_asset(release: dict) -> str:
-    """Pick the linux-amd64 tarball or zip from the release assets."""
-    for asset in release.get("assets", []):
-        name = asset.get("name", "")
-        n = name.lower()
-        if ("linux" in n and ("amd64" in n or "x86_64" in n)
-                and (n.endswith(".tar.gz") or n.endswith(".tgz") or n.endswith(".zip"))):
-            return asset["browser_download_url"]
-    raise SystemExit(
-        f"ERROR: no linux amd64 asset in release. Assets: {[a.get('name') for a in release.get('assets', [])]}"
-    )
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
-def _download(url: str, dest: Path) -> None:
-    with urllib.request.urlopen(url, timeout=60) as fh:
-        dest.write_bytes(fh.read())
-
-
-def _extract_binary(archive: Path, out_dir: Path) -> Path:
-    """Extract and return the path to the mxcli binary inside `out_dir`."""
-    if archive.suffix == ".zip":
-        with zipfile.ZipFile(archive) as zf:
-            zf.extractall(out_dir)
-    else:
-        with tarfile.open(archive, "r:*") as tf:
-            tf.extractall(out_dir)
-    for p in out_dir.rglob("mxcli"):
-        if p.is_file() and os.access(p, os.X_OK) or p.name == "mxcli":
-            p.chmod(0o755)
-            return p
-    raise SystemExit("ERROR: could not find `mxcli` binary in extracted release")
+def _download_and_verify(pin: dict, dest: Path) -> None:
+    url = pin["download_url"]
+    print(f"Downloading {pin['asset']} from {url}")
+    data = _http_get(url)
+    actual = _sha256(data)
+    expected = pin["sha256"]
+    if actual != expected:
+        raise SystemExit(
+            "ERROR: sha256 mismatch; refusing to execute an unverified binary.\n"
+            f"  expected: {expected}\n"
+            f"  actual:   {actual}\n"
+            f"  bytes:    {len(data)}\n"
+            f"  pinned:   {pin.get('size_bytes', '?')}\n"
+            "If the upstream release was republished, update "
+            "policy/mxcli-pin.json with the new sha256 (and justify the "
+            "change in the PR)."
+        )
+    size_expected = pin.get("size_bytes")
+    if size_expected is not None and len(data) != size_expected:
+        raise SystemExit(
+            f"ERROR: size mismatch - got {len(data)} bytes, pinned "
+            f"{size_expected}. Update policy/mxcli-pin.json."
+        )
+    dest.write_bytes(data)
+    dest.chmod(0o755)
+    print(f"Verified sha256={actual} ({len(data)} bytes) -> {dest}")
 
 
 _USAGE_SUB_RE = re.compile(r"^\s{2,}(\S+)(?:\s{2,}|$)")
 
 
 def _list_subcommands(binary: Path, prefix: list[str]) -> list[str]:
-    """Run `mxcli <prefix...> --help` and return the direct subcommand names."""
     cmd = [str(binary), *prefix, "--help"]
     try:
         p = subprocess.run(
@@ -81,12 +91,11 @@ def _list_subcommands(binary: Path, prefix: list[str]) -> list[str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=10,
+            timeout=15,
         )
     except FileNotFoundError:
         raise SystemExit(f"ERROR: cannot invoke {cmd[0]!r}")
     output = (p.stdout or "") + "\n" + (p.stderr or "")
-    # Collect the lines under an "Available Commands:" or "Commands:" block.
     subs: list[str] = []
     in_block = False
     for line in output.splitlines():
@@ -98,14 +107,17 @@ def _list_subcommands(binary: Path, prefix: list[str]) -> list[str]:
                 break
             m = _USAGE_SUB_RE.match(line)
             if m:
-                subs.append(m.group(1))
+                name = m.group(1)
+                # cobra prints `help` on every parent; skip it.
+                if name == "help":
+                    continue
+                subs.append(name)
     return subs
 
 
 def _walk_tree(binary: Path) -> set[str]:
-    """BFS the command tree and return every path as 'parent child child2'."""
     seen: set[str] = set()
-    stack: list[list[str]] = [[]]  # start at root
+    stack: list[list[str]] = [[]]
     while stack:
         prefix = stack.pop()
         subs = _list_subcommands(binary, prefix)
@@ -117,36 +129,24 @@ def _walk_tree(binary: Path) -> set[str]:
 
 
 def _load_inventory_keys() -> set[str]:
-    data = json.loads((REPO_ROOT / "policy" / "mxcli-commands.json").read_text(encoding="utf-8"))
+    data = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
     return set(data["commands"].keys())
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tag", default="v0.26.0")
-    args = ap.parse_args(argv)
-    tag = args.tag
+    argparse.ArgumentParser(description=__doc__).parse_args(argv)
 
-    print(f"Fetching release {tag} from mendixlabs/mxcli …")
-    release = _github(f"https://api.github.com/repos/mendixlabs/mxcli/releases/tags/{tag}")
-    asset_url = _find_linux_asset(release)
-    print(f"Found linux asset: {asset_url}")
+    pin = _load_pin()
+    print(f"Pinned mxcli: {pin['version']} ({pin['asset']})")
 
     with tempfile.TemporaryDirectory() as td:
-        tdp = Path(td)
-        archive = tdp / "mxcli-release" + Path(asset_url).suffix
-        archive = Path(str(archive))
-        _download(asset_url, archive)
-        extract_dir = tdp / "extracted"
-        extract_dir.mkdir()
-        binary = _extract_binary(archive, extract_dir)
-        print(f"Extracted mxcli to {binary}")
-
+        binary = Path(td) / "mxcli"
+        _download_and_verify(pin, binary)
         discovered = _walk_tree(binary)
         inventory = _load_inventory_keys()
-        # The inventory contains alias rows (`list`) and some entries that
-        # mxcli does not surface in --help (`help`). Filter those out before
-        # the diff.
+        # The inventory contains the `list` alias of `show`; mxcli's --help
+        # does not expose it as a separate command. The built-in cobra
+        # `help` command is already filtered in _list_subcommands.
         aliases = {"list"}
         inventory_cmp = {k for k in inventory if k not in aliases and k != "help"}
 

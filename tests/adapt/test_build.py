@@ -158,6 +158,69 @@ class TestCheckMode(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
+class TestDeterminism(unittest.TestCase):
+    """ADR-0031: two builds into different temp dirs produce identical bytes
+    and never contain absolute paths, usernames, or timestamps."""
+
+    def test_two_builds_identical(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as c:
+            a_out = Path(a) / "mendix-agentic"
+            c_out = Path(c) / "mendix-agentic"
+            b.build(
+                core_dir=REPO_ROOT / "core",
+                policy_dir=REPO_ROOT / "policy",
+                out_root=a_out,
+                version="test-0.0.0",
+            )
+            b.build(
+                core_dir=REPO_ROOT / "core",
+                policy_dir=REPO_ROOT / "policy",
+                out_root=c_out,
+                version="test-0.0.0",
+            )
+            diffs = b._dir_diff(a_out, c_out)
+            self.assertEqual(diffs, [], msg=f"determinism broken: {diffs}")
+
+    def test_no_absolute_paths_or_usernames_in_output(self):
+        import getpass
+        marker_user = getpass.getuser()
+        with tempfile.TemporaryDirectory() as a:
+            a_out = Path(a) / "mendix-agentic"
+            b.build(
+                core_dir=REPO_ROOT / "core",
+                policy_dir=REPO_ROOT / "policy",
+                out_root=a_out,
+                version="test-0.0.0",
+            )
+            workspace = str(REPO_ROOT).encode("utf-8")
+            for rel in b._list_files(a_out):
+                content = b._read_bytes_lf(a_out / rel)
+                self.assertNotIn(
+                    marker_user.encode("utf-8"), content,
+                    msg=f"{rel} contains the local username",
+                )
+                self.assertNotIn(
+                    workspace, content,
+                    msg=f"{rel} contains the local workspace path",
+                )
+
+    def test_no_empty_directories(self):
+        with tempfile.TemporaryDirectory() as a:
+            a_out = Path(a) / "mendix-agentic"
+            b.build(
+                core_dir=REPO_ROOT / "core",
+                policy_dir=REPO_ROOT / "policy",
+                out_root=a_out,
+                version="test-0.0.0",
+            )
+            for p in a_out.rglob("*"):
+                if p.is_dir():
+                    self.assertTrue(
+                        any(p.iterdir()),
+                        msg=f"empty directory in build output: {p.relative_to(a_out)}",
+                    )
+
+
 class TestProjectSettingsTemplate(unittest.TestCase):
     def test_template_denies_powershell_and_mpr(self):
         commands = json.loads(

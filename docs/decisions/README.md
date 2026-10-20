@@ -34,3 +34,6 @@ Use `0000-template.md` as the starting point.
 | 0022 | 2026-10-20 | The Claude Code plugin is `mendix-agentic`; this repo is its marketplace | Accepted |
 | 0023 | 2026-10-20 | Only the Claude Code adapter is built now                              | Accepted |
 | 0024 | 2026-10-20 | CI checks the installed mxcli's command tree against the inventory     | Accepted |
+| 0031 | 2026-10-20 | Drift checks compare tracked files only; no empty directories          | Accepted |
+| 0032 | 2026-10-20 | The pinned mxcli binary is verified against a recorded SHA-256         | Accepted |
+| 0033 | 2026-10-20 | CI check steps run independently                                       | Accepted |

@@ -323,14 +323,18 @@ def _plugin_manifest(version: str) -> dict:
 # -----------------------------------------------------------------------------
 
 def _copy_policy(policy_src: Path, out_root: Path) -> None:
+    """Copy policy files into the plugin tree, normalising to LF (ADR-0031).
+
+    `_write_text_lf` is used instead of `shutil.copy2` so a Windows
+    checkout (where `core.autocrlf` may expand to CRLF) still produces the
+    same bytes as a Linux build.
+    """
     dest = out_root / "policy"
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
+    dest.mkdir(parents=True, exist_ok=True)
     for name in ("mxcli_guard.py", "mxcli-commands.json", "stop-operations.json", "write-classes.json"):
         src = policy_src / name
         if src.exists():
-            shutil.copy2(src, dest / name)
+            _write_text_lf(dest / name, src.read_text(encoding="utf-8"))
 
 
 # -----------------------------------------------------------------------------
@@ -367,41 +371,48 @@ def _project_settings_template(commands: dict) -> dict:
 # Build
 # -----------------------------------------------------------------------------
 
+def _write_text_lf(path: Path, text: str) -> None:
+    """Write `text` with LF line endings and no trailing BOM. Deterministic
+    across OSes (ADR-0031): no CRLF leakage, no absolute paths, no
+    timestamps."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Use binary write to avoid Python's universal-newlines translation on
+    # Windows (which would convert \n → \r\n in text mode).
+    path.write_bytes(text.replace("\r\n", "\n").encode("utf-8"))
+
+
 def build(core_dir: Path, policy_dir: Path, out_root: Path, version: str) -> None:
-    out_root.mkdir(parents=True, exist_ok=True)
+    # Fully reset the plugin dir so stale files from a previous build (or a
+    # removed role) do not linger. ADR-0031: the committed tree must equal
+    # a fresh build, byte for byte, with no empty directories.
+    if out_root.exists():
+        shutil.rmtree(out_root)
+    out_root.mkdir(parents=True)
 
     # .claude-plugin/plugin.json
-    (out_root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
-    (out_root / ".claude-plugin" / "plugin.json").write_text(
-        json.dumps(_plugin_manifest(version), indent=2) + "\n", encoding="utf-8"
+    _write_text_lf(
+        out_root / ".claude-plugin" / "plugin.json",
+        json.dumps(_plugin_manifest(version), indent=2) + "\n",
     )
 
-    # Agents
+    # Agents — only materialise the directory if at least one role exists
+    # (ADR-0031: no empty directories).
     roles = _load_roles(core_dir)
-    agents_dir = out_root / "agents"
-    if agents_dir.exists():
-        shutil.rmtree(agents_dir)
-    agents_dir.mkdir(parents=True)
     cap_map = _load_capability_map()
     roles_by_name = {r["frontmatter"]["name"]: r for r in roles}
     for role in roles:
         name, md = _role_to_subagent(role, roles_by_name, cap_map)
-        (agents_dir / f"{name}.md").write_text(md, encoding="utf-8")
+        _write_text_lf(out_root / "agents" / f"{name}.md", md)
 
-    # Skills
+    # Skills — same: only materialise when a skill exists.
     skills = _load_skills(core_dir)
-    skills_root = out_root / "skills"
-    if skills_root.exists():
-        shutil.rmtree(skills_root)
-    skills_root.mkdir(parents=True)
     for s in skills:
         _write_skill(s, out_root)
 
-    # Hooks
-    hooks_dir = out_root / "hooks"
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    (hooks_dir / "hooks.json").write_text(
-        json.dumps(_hooks_json(), indent=2) + "\n", encoding="utf-8"
+    # Hooks — always emitted; the guard is the plugin's point.
+    _write_text_lf(
+        out_root / "hooks" / "hooks.json",
+        json.dumps(_hooks_json(), indent=2) + "\n",
     )
 
     # Policy copy
@@ -410,20 +421,15 @@ def build(core_dir: Path, policy_dir: Path, out_root: Path, version: str) -> Non
     # ownership.json (generated) — both the plugin copy and the main
     # repo's policy/ownership.json, per ADR-0019.
     ownership = _generate_ownership(roles)
-    (out_root / "policy" / "ownership.json").write_text(
-        json.dumps(ownership, indent=2) + "\n", encoding="utf-8"
-    )
-    main_ownership = policy_dir / "ownership.json"
-    main_ownership.write_text(
-        json.dumps(ownership, indent=2) + "\n", encoding="utf-8"
-    )
+    ownership_text = json.dumps(ownership, indent=2) + "\n"
+    _write_text_lf(out_root / "policy" / "ownership.json", ownership_text)
+    _write_text_lf(policy_dir / "ownership.json", ownership_text)
 
     # Project-settings template (also committed, outside plugin dir)
     commands = _load_json(policy_dir / "mxcli-commands.json").get("commands", {})
-    PROJECT_SETTINGS_OUT.parent.mkdir(parents=True, exist_ok=True)
-    PROJECT_SETTINGS_OUT.write_text(
+    _write_text_lf(
+        PROJECT_SETTINGS_OUT,
         json.dumps(_project_settings_template(commands), indent=2) + "\n",
-        encoding="utf-8",
     )
 
 
@@ -431,18 +437,36 @@ def build(core_dir: Path, policy_dir: Path, out_root: Path, version: str) -> Non
 # --check (diff against committed output)
 # -----------------------------------------------------------------------------
 
-def _dir_diff(a: Path, b: Path, prefix: str = "") -> list[str]:
-    """Deep comparison; returns list of relative paths that differ or are missing."""
+def _list_files(root: Path) -> set[str]:
+    """Return every FILE's path relative to `root`, as forward-slash strings."""
+    out: set[str] = set()
+    if not root.exists():
+        return out
+    for p in root.rglob("*"):
+        if p.is_file():
+            out.add(p.relative_to(root).as_posix())
+    return out
+
+
+def _read_bytes_lf(path: Path) -> bytes:
+    """Read a file as bytes, normalising CRLF→LF (ADR-0031)."""
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
+def _dir_diff(a: Path, b: Path) -> list[str]:
+    """File-only comparison (ADR-0031). Returns relative paths that differ
+    or are missing. Directories themselves are ignored — git cannot track
+    empty directories, and the build must not depend on them."""
     diffs: list[str] = []
-    cmp = filecmp.dircmp(str(a), str(b))
-    for name in cmp.left_only:
-        diffs.append(f"{prefix}{name} (only in generated)")
-    for name in cmp.right_only:
-        diffs.append(f"{prefix}{name} (only in committed)")
-    for name in cmp.diff_files:
-        diffs.append(f"{prefix}{name} (contents differ)")
-    for name in cmp.common_dirs:
-        diffs.extend(_dir_diff(a / name, b / name, prefix + name + "/"))
+    a_files = _list_files(a)
+    b_files = _list_files(b)
+    for rel in sorted(a_files - b_files):
+        diffs.append(f"{rel} (only in generated)")
+    for rel in sorted(b_files - a_files):
+        diffs.append(f"{rel} (only in committed)")
+    for rel in sorted(a_files & b_files):
+        if _read_bytes_lf(a / rel) != _read_bytes_lf(b / rel):
+            diffs.append(f"{rel} (contents differ)")
     return diffs
 
 
