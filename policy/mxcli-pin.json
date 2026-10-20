@@ -1,0 +1,14 @@
+{
+  "_comment": "Pinned mxcli release and its SHA-256. CI verifies the downloaded asset against sha256 before executing it (ADR-0032). To update: download the new asset, compute `sha256sum <file>`, and record the result here along with the asset name and release URL. The pinned version is also recorded in docs/version-matrix.md and gated by ADR-0013.",
+  "_schema": {
+    "version": 1
+  },
+  "pin": {
+    "version": "v0.26.0",
+    "asset": "mxcli-linux-amd64",
+    "release_url": "https://github.com/mendixlabs/mxcli/releases/tag/v0.26.0",
+    "download_url": "https://github.com/mendixlabs/mxcli/releases/download/v0.26.0/mxcli-linux-amd64",
+    "sha256": "c3fe5450931d52628777107c71617855db6acf606ef7df8815990ac3c55519ea",
+    "size_bytes": 102301856
+  }
+}

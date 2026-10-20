@@ -1,0 +1,15 @@
+{
+  "name": "mendix-agentic",
+  "version": "0.2.0-alpha",
+  "description": "Mendix model-editing agents for mxcli, plus a PreToolUse policy guard that keeps writes safe.",
+  "author": {
+    "name": "Mendix_Agentic maintainers"
+  },
+  "repository": "https://github.com/g-amess/Mendix_Agentic",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mendix",
+    "mxcli",
+    "mdl"
+  ]
+}

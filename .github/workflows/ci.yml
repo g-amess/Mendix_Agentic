@@ -21,16 +21,53 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # Each of the following four steps runs even if an earlier one failed
+      # (ADR-0033): one CI run surfaces every failure, not just the first.
       - name: Doctor (JSON)
-        # mxcli and Claude Code are not installed in CI; doctor must still
-        # report cleanly. We tolerate a non-zero exit if the only FAIL is a
-        # missing optional dependency — in phase 1, missing mxcli is WARN,
-        # missing Claude is WARN, so exit should be 0.
+        if: always()
         shell: bash
-        run: |
-          python bin/doctor.py --json
+        run: python bin/doctor.py --json
+
+      - name: Validate core/
+        if: always()
+        shell: bash
+        run: python adapters/validate.py
+
+      - name: Build --check (adapter drift)
+        if: always()
+        shell: bash
+        run: python adapters/claude/build.py --check
 
       - name: Unit tests
+        if: always()
         shell: bash
-        run: |
-          python -m unittest discover tests -v
+        run: python -m unittest discover tests -v
+
+  mxcli-tree:
+    name: mxcli command-tree check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify + walk pinned mxcli binary
+        env:
+          # ADR-0032: GITHUB_TOKEN raises the API rate limit; the asset
+          # download itself is unauthenticated and public.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/check_mxcli_tree.py
+
+  # Optional: run `claude plugin validate` if the CLI is installable without
+  # auth. Skipped by default because `claude` requires sign-in to run.
+  # Documented here so a future contributor does not reinvent it.
+  claude-plugin-validate:
+    name: claude plugin validate (manual)
+    runs-on: ubuntu-latest
+    if: ${{ false }}
+    steps:
+      - run: |
+          echo "Skipped: the Claude Code CLI requires sign-in; running"
+          echo "'claude plugin validate' from CI is deferred to phase 3+ when a"
+          echo "service-account auth story is in place."

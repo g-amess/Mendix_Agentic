@@ -935,6 +935,79 @@ class TestTwoTokenLookup(unittest.TestCase):
         self.assertTrue(d.allow, msg=d.reason)
 
 
+class TestInlineMdlProperty(unittest.TestCase):
+    """Property-style corpus test (ADR-0015 + ADR-0017).
+
+    For every (statement, truth) pair below, the inline classifier must never
+    label the statement READ when its true class is WRITE. Covers comments
+    (`//` and `/* */`), strings that contain `;`, mixed case, read verbs,
+    DDL writes, utility writes, and the empty / semicolons-only cases.
+    """
+
+    # (statement, is_write)
+    CORPUS = [
+        # Read verbs — must classify READ when alone, WRITE when mixed with a write.
+        ("SHOW modules", False),
+        ("show modules", False),
+        ("DESCRIBE entity Mod.E", False),
+        ("Describe Entity Mod.E", False),
+        ("SELECT * FROM Mod.E", False),
+        ("OQL FROM Mod.E", False),
+        # Comments stripped
+        ("// comment\nSHOW modules", False),
+        ("/* block comment */ SHOW modules", False),
+        ("SHOW modules; // trailing", False),
+        # Strings containing semicolons
+        ("SHOW modules WHERE name = 'a;b'", False),  # treated READ (naïve split OK)
+        # Multiple statements, all read
+        ("SHOW modules; DESCRIBE entities", False),
+        # Writes
+        ("CREATE ENTITY Mod.E", True),
+        ("create entity mod.e", True),
+        ("ALTER ENTITY Mod.E ADD ATTRIBUTE Foo String(10)", True),
+        ("DROP ENTITY Mod.E", True),
+        ("RENAME ENTITY Mod.E TO Mod.F", True),
+        ("UPDATE WIDGETS SET foo = 1", True),
+        ("MOVE ENTITY Mod.E TO Mod2", True),
+        # Mixed read + write → must WRITE
+        ("SHOW modules; CREATE ENTITY Mod.E", True),
+        ("CREATE ENTITY Mod.E; SHOW modules", True),
+        # Utility writes
+        ("CONNECT 'url'", True),
+        ("DISCONNECT", True),
+        ("USE SESSION 1", True),
+        ("IMPORT 'file'", True),
+        ("SET format = json", True),
+        # Empty / whitespace / semicolon-only
+        ("", True),
+        (";", True),
+        (";;;", True),
+        ("   ", True),
+        # Unknown verb → treat as WRITE
+        ("FROBNICATE Mod.E", True),
+        # Mixed case + leading whitespace
+        ("   show modules", False),
+        ("\tDESCRIBE Mod.E", False),
+    ]
+
+    def test_corpus(self):
+        import policy.mxcli_guard as g
+        for stmt, is_write in self.CORPUS:
+            actual = g._classify_inline_mdl(stmt)
+            if is_write:
+                self.assertEqual(
+                    actual, "WRITE",
+                    msg=f"must classify WRITE: {stmt!r} → got {actual}",
+                )
+            else:
+                # READ is allowed (and expected) but WRITE would be safe too;
+                # we only require that WRITE statements are NEVER labelled READ.
+                self.assertIn(
+                    actual, {"READ", "WRITE"},
+                    msg=f"classifier returned unexpected value for {stmt!r}: {actual}",
+                )
+
+
 class TestClassify(unittest.TestCase):
     def test_unverified_read_falls_back_to_write(self):
         commands = {"foo": {"class": "READ", "verified": False, "source": "x"}}

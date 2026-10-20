@@ -17,6 +17,19 @@ pinned at v0.26.0 (ADR-0013). Any upgrade requires re-running
 promoting the policy data (`policy/mxcli-commands.json`) before the pin
 moves.
 
+### Pinned mxcli binary (ADR-0032)
+
+| Field       | Value                                                                   |
+| ----------- | ----------------------------------------------------------------------- |
+| Version     | v0.26.0                                                                 |
+| Asset       | `mxcli-linux-amd64` (raw ELF binary, not an archive)                    |
+| Size        | 102 301 856 bytes                                                       |
+| SHA-256     | `c3fe5450931d52628777107c71617855db6acf606ef7df8815990ac3c55519ea`      |
+| Source      | https://github.com/mendixlabs/mxcli/releases/download/v0.26.0/mxcli-linux-amd64 |
+
+The same values live in [`policy/mxcli-pin.json`](../policy/mxcli-pin.json)
+and are checked by the `mxcli-tree` CI job before the binary is executed.
+
 ## How to update this file
 
 - When a component's floor shifts, add a row and keep the old one with a

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "mendix-agentic",
+  "description": "Mendix model-editing agents for mxcli and the policy guard that keeps writes safe.",
+  "owner": {
+    "name": "Mendix_Agentic maintainers",
+    "url": "https://github.com/g-amess/Mendix_Agentic"
+  },
+  "plugins": [
+    {
+      "name": "mendix-agentic",
+      "source": "./plugins/mendix-agentic",
+      "description": "The core plugin: role-based subagents and a PreToolUse guard that enforces policy/mxcli-commands.json. Install into a Mendix project; the guard denies .mpr writes outside the sanctioned path."
+    }
+  ]
+}

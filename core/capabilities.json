@@ -1,0 +1,44 @@
+{
+  "_comment": "Capability registry. Every entry in a role card's `capabilities` list must come from here. The adapter maps each id to tool-specific tool names via adapters/<tool>/capability-map.json. `ask-human` is only valid on roles with kind: hub (subagents cannot interrupt the user).",
+  "_schema": {
+    "version": 1
+  },
+  "capabilities": {
+    "read-files": {
+      "description": "Read files from the project working tree (not external paths).",
+      "read_only": true
+    },
+    "search-files": {
+      "description": "Grep / glob over the project working tree.",
+      "read_only": true
+    },
+    "edit-artefacts": {
+      "description": "Write files, but only under .mxagent/artefacts/. Read roles use this to persist analysis reports.",
+      "read_only": false
+    },
+    "shell-read": {
+      "description": "Run read-only shell commands (ls, cat, git log, git status).",
+      "read_only": true
+    },
+    "mxcli-read": {
+      "description": "Invoke mxcli with READ-classified subcommands (show, describe, lint, check, ...).",
+      "read_only": true
+    },
+    "mxcli-write": {
+      "description": "Invoke mxcli with WRITE-classified subcommands (exec, fmt, rename, ...). Only allowed on roles whose `owns` lists the matching write classes.",
+      "read_only": false
+    },
+    "web-read": {
+      "description": "Fetch and search the public web (for mxcli / Mendix docs lookups).",
+      "read_only": true
+    },
+    "delegate": {
+      "description": "Spawn one of the roles listed in `delegates_to`. Only valid on kind: hub.",
+      "read_only": true
+    },
+    "ask-human": {
+      "description": "Prompt the user for input. Only valid on kind: hub — subagents never interrupt the user.",
+      "read_only": true
+    }
+  }
+}
