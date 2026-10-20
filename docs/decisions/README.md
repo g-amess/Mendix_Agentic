@@ -23,3 +23,7 @@ Use `0000-template.md` as the starting point.
 | 0011 | 2026-10-20 | mxcli safety overrides are denied by the guard                          | Accepted |
 | 0012 | 2026-10-20 | mxcli command classifications come from source or `--help`              | Accepted |
 | 0013 | 2026-10-20 | mxcli is pinned at v0.26.0                                              | Accepted |
+| 0014 | 2026-10-20 | Unlisted mxcli command paths are WRITE; children never inherit READ    | Accepted |
+| 0015 | 2026-10-20 | Root mxcli invocations are classified by their MDL statements          | Accepted |
+| 0016 | 2026-10-20 | Bash is the supported agent shell; PowerShell is a backstop            | Accepted |
+| 0017 | 2026-10-20 | The guard protects against agent mistakes, not deliberate evasion      | Accepted |

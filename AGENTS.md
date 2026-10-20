@@ -102,6 +102,13 @@ Log it in `docs/mxcli-bugs.md` with mxcli version, Mendix version, symptom,
 workaround and a "Retested on vX.Y.Z" line. Add a row to the version matrix if
 the minimum shifts.
 
+## Threat model
+
+See [`docs/threat-model.md`](docs/threat-model.md) for what the guard
+protects against (agent mistakes, drift, accidental writes to open models)
+and what it does not (a deliberately obfuscating agent). The backstops —
+git snapshots, mxcli's lock check, human approval, CI — are listed there.
+
 ## Phase 1 scope reminder
 
 If you find yourself writing a skill, agent definition, slash command, plugin

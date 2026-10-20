@@ -75,7 +75,9 @@ class TestParseMxcli(unittest.TestCase):
         self.assertEqual(len(invs), 1)
         self.assertEqual(invs[0].mpr_path, "app.mpr")
         self.assertEqual(invs[0].inline_script, "SHOW modules")
-        self.assertEqual(invs[0].subcommand, "exec")
+        # -c with no subcommand is now classified by MDL verbs (rule R4-c),
+        # not forced to exec. subcommand stays None at parse time.
+        self.assertIsNone(invs[0].subcommand)
 
     def test_chained_command(self):
         invs = g.extract_mxcli_invocations("echo hi && mxcli -p app.mpr exec m.mdl")
@@ -493,9 +495,20 @@ class TestEdgeCases(unittest.TestCase):
         self.assertFalse(d.allow)
         self.assertEqual(d.rule, "R5")
 
-    def test_quoted_args(self):
+    def test_quoted_args_read_mdl(self):
+        """Quoted paths + `-c` with a read verb → allow (rule R4-c, ADR-0015)."""
         d = mk_decide(
             tool_input={"command": 'mxcli -p "spaced path/app.mpr" -c "SHOW modules"'}
+        )
+        self.assertTrue(d.allow, msg=d.reason)
+        self.assertEqual(d.rule, "R3")
+
+    def test_quoted_args_write_mdl(self):
+        """Quoted paths + `-c` with a write verb → deny (unlisted writer, R5)."""
+        d = mk_decide(
+            tool_input={
+                "command": 'mxcli -p "spaced path/app.mpr" -c "CREATE ENTITY Mod.E;"'
+            }
         )
         self.assertFalse(d.allow)
         self.assertEqual(d.rule, "R5")
@@ -550,8 +563,16 @@ class TestEdgeCases(unittest.TestCase):
         parsed = json.loads(out)
         self.assertEqual(parsed["hookSpecificOutput"]["permissionDecision"], "allow")
 
-    def test_hook_mode_fixture_dash_c_denies(self):
+    def test_hook_mode_fixture_dash_c_read_allows(self):
+        """`-c "SHOW …"` is read-only MDL → allow (rule R4-c)."""
         payload = load_fixture("bash_mxcli_dash_c.json")
+        out, _ = g.run_hook_mode(json.dumps(payload))
+        parsed = json.loads(out)
+        self.assertEqual(parsed["hookSpecificOutput"]["permissionDecision"], "allow")
+
+    def test_hook_mode_fixture_dash_c_write_denies(self):
+        """`-c "CREATE …"` is a write MDL statement → deny."""
+        payload = load_fixture("bash_mxcli_dash_c_write.json")
         out, _ = g.run_hook_mode(json.dumps(payload))
         parsed = json.loads(out)
         self.assertEqual(parsed["hookSpecificOutput"]["permissionDecision"], "deny")
@@ -640,6 +661,251 @@ class TestCliMode(unittest.TestCase):
         self.assertTrue(msg.startswith("DENY"))
 
 
+class TestDepth3Lookup(unittest.TestCase):
+    """Depth-3 subcommand paths (auth hub login, theme switcher install)."""
+
+    def test_auth_hub_login_write(self):
+        d = mk_decide(tool_input={"command": "mxcli auth hub login"})
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R5")
+
+    def test_auth_hub_status_read(self):
+        d = mk_decide(tool_input={"command": "mxcli auth hub status"})
+        self.assertTrue(d.allow, msg=d.reason)
+        self.assertEqual(d.rule, "R3")
+
+    def test_theme_switcher_install_write(self):
+        d = mk_decide(tool_input={"command": "mxcli theme switcher install bar"})
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R5")
+
+
+class TestUnlistedChildIsWrite(unittest.TestCase):
+    """ADR-0014: an unlisted child of a listed parent is WRITE."""
+
+    def test_marketplace_unknown_child_is_write(self):
+        """`marketplace` is a READ parent, but `marketplace foo` is not listed."""
+        d = mk_decide(tool_input={"command": "mxcli marketplace foo"})
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R4")
+
+    def test_skill_unknown_child_is_write(self):
+        """`skill` is a READ parent; `skill sync` is not listed → WRITE."""
+        d = mk_decide(tool_input={"command": "mxcli skill sync"})
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R4")
+
+    def test_leaf_takes_args(self):
+        """`show` is a leaf (no `show …` keys), so `show modules` falls through to the
+        parent's class, which is READ."""
+        d = mk_decide(tool_input={"command": "mxcli show modules"})
+        self.assertTrue(d.allow, msg=d.reason)
+        self.assertEqual(d.rule, "R3")
+
+
+class TestRootDashC(unittest.TestCase):
+    """Rule R4-c: root `-c` classified by MDL verbs (ADR-0015)."""
+
+    def test_read_verb_allowed(self):
+        for verb in ("SHOW", "DESCRIBE", "SELECT", "OQL"):
+            with self.subTest(verb=verb):
+                d = mk_decide(
+                    tool_input={"command": f'mxcli -p app.mpr -c "{verb} foo FROM bar"'}
+                )
+                self.assertTrue(d.allow, msg=d.reason)
+                self.assertEqual(d.rule, "R3")
+
+    def test_write_verb_denied(self):
+        for verb in ("CREATE", "ALTER", "DROP", "RENAME", "UPDATE"):
+            with self.subTest(verb=verb):
+                d = mk_decide(
+                    tool_input={"command": f'mxcli -c "{verb} ENTITY Mod.E"'}
+                )
+                self.assertFalse(d.allow, msg=d.reason)
+                self.assertEqual(d.rule, "R5")
+
+    def test_mixed_statements_write(self):
+        d = mk_decide(
+            tool_input={"command": 'mxcli -c "SHOW modules; CREATE ENTITY Mod.E"'}
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R5")
+
+    def test_stop_op_in_dash_c(self):
+        """Even if an agent were authorised, stop-ops in inline MDL deny."""
+        ownership = {"writer": {"allow": ["exec"], "description": ""}}
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            _mk_git_repo(tdp)
+            # Pre-record check marker for the inline text
+            inline = "ALTER SETTINGS foo = 1"
+            marker_dir = tdp / ".mxagent" / "checks"
+            marker_dir.mkdir(parents=True)
+            (marker_dir / f"{g.script_sha256(inline)}.ok").write_text("ok")
+            d = mk_decide(
+                agent="writer",
+                tool_input={"command": f'mxcli -c "{inline}"'},
+                cwd=tdp,
+                ownership=ownership,
+            )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R8")
+
+
+class TestRootReplOrStdin(unittest.TestCase):
+    """Rule R4-c: bare `mxcli` (REPL) or stdin invocation is WRITE."""
+
+    def test_bare_mxcli_denied(self):
+        d = mk_decide(tool_input={"command": "mxcli -p app.mpr"})
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R4-c")
+
+    def test_mxcli_from_pipe_denied(self):
+        """`echo "..." | mxcli -p x.mpr` is a stdin invocation; REPL/stdin → WRITE."""
+        d = mk_decide(
+            tool_input={"command": 'echo "SHOW modules" | mxcli -p app.mpr'}
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R4-c")
+
+
+class TestPowerShellBackstop(unittest.TestCase):
+    """Rule R2d: PowerShell dangerous constructs around mxcli (ADR-0016)."""
+
+    def test_invoke_expression_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={"command": 'Invoke-Expression "mxcli show modules"'},
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+    def test_iex_alias_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={"command": 'iex "mxcli show modules"'},
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+    def test_encoded_command_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={
+                "command": "powershell -EncodedCommand bXhjbGkgc2hvdyBtb2R1bGVz # runs mxcli"
+            },
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+    def test_subexpression_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={"command": "mxcli $(Get-Content cmd.txt)"},
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+    def test_backtick_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={"command": "mxcli `nshow modules"},
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+    def test_start_process_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={"command": "Start-Process mxcli show modules"},
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+    def test_call_operator_denied(self):
+        d = mk_decide(
+            tool_name="PowerShell",
+            tool_input={"command": "& ./mxcli.exe show modules"},
+        )
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R2d")
+
+
+class TestRule7IgnoresMxcliCache(unittest.TestCase):
+    """Rule 7 only considers *.mpr and mprcontents/, never .mxcli/catalog.db."""
+
+    def test_mxcli_cache_dirty_allows(self):
+        import subprocess as sp
+        ownership = {"writer": {"allow": ["exec"], "description": ""}}
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            _mk_git_repo(tdp, add_mpr=True, dirty_mpr=False)
+            # Make .mxcli/catalog.db dirty — must NOT trigger rule 7.
+            (tdp / ".mxcli").mkdir()
+            (tdp / ".mxcli" / "catalog.db").write_text("v1", encoding="utf-8")
+            sp.run(["git", "-C", str(tdp), "add", ".mxcli/catalog.db"], check=True)
+            sp.run(
+                ["git", "-C", str(tdp), "commit", "-q", "-m", "cache"], check=True
+            )
+            (tdp / ".mxcli" / "catalog.db").write_text("v2 dirty", encoding="utf-8")
+            script = tdp / "m.mdl"
+            script.write_text("SHOW modules;\n", encoding="utf-8")
+            marker_dir = tdp / ".mxagent" / "checks"
+            marker_dir.mkdir(parents=True)
+            (marker_dir / f"{g.script_sha256(script.read_text())}.ok").write_text("ok")
+            d = mk_decide(
+                agent="writer",
+                tool_input={"command": f"mxcli exec {script.name}"},
+                cwd=tdp,
+                ownership=ownership,
+            )
+        self.assertTrue(d.allow, msg=d.reason)
+
+
+class TestSideEffectsField(unittest.TestCase):
+    """Every row has a `side_effects` list (data-only field; no runtime effect)."""
+
+    def test_every_row_has_side_effects(self):
+        import json as _json
+        with open(REPO_ROOT / "policy" / "mxcli-commands.json", encoding="utf-8") as fh:
+            data = _json.load(fh)
+        for name, row in data["commands"].items():
+            self.assertIn("side_effects", row, msg=f"{name!r} missing side_effects")
+            self.assertIsInstance(row["side_effects"], list, msg=f"{name!r}")
+            for s in row["side_effects"]:
+                self.assertIn(
+                    s,
+                    {"catalog", "tempdir", "docker", "process", "network", "credentials", "files"},
+                    msg=f"{name!r} has unknown side-effect {s!r}",
+                )
+
+
+class TestInlineMdlClassifier(unittest.TestCase):
+    def test_pure_read(self):
+        self.assertEqual(
+            g._classify_inline_mdl("SHOW modules; DESCRIBE entities;"), "READ"
+        )
+
+    def test_mixed_is_write(self):
+        self.assertEqual(
+            g._classify_inline_mdl("SHOW modules; CREATE ENTITY X;"), "WRITE"
+        )
+
+    def test_comments_stripped(self):
+        self.assertEqual(
+            g._classify_inline_mdl("// a comment\nSHOW modules;"), "READ"
+        )
+
+    def test_block_comment_stripped(self):
+        self.assertEqual(
+            g._classify_inline_mdl("/* comment */ SHOW modules;"), "READ"
+        )
+
+    def test_empty_is_write(self):
+        self.assertEqual(g._classify_inline_mdl(""), "WRITE")
+        self.assertEqual(g._classify_inline_mdl(";;;"), "WRITE")
+
+
 class TestTwoTokenLookup(unittest.TestCase):
     """The guard prefers a 'parent child' key over the bare 'parent' entry."""
 
@@ -658,9 +924,11 @@ class TestTwoTokenLookup(unittest.TestCase):
         self.assertTrue(d.allow, msg=d.reason)
 
     def test_docker_build_write(self):
+        """`docker build` is an unlisted child of a parent that has siblings in
+        commands.json → unlisted → R4 (ADR-0014)."""
         d = mk_decide(tool_input={"command": "mxcli docker build"})
         self.assertFalse(d.allow)
-        self.assertEqual(d.rule, "R5")
+        self.assertEqual(d.rule, "R4")
 
     def test_marketplace_search_read(self):
         d = mk_decide(tool_input={"command": "mxcli marketplace search foo"})

@@ -27,8 +27,19 @@ Rules, evaluated in order:
 - **R2b** Shell command that modifies `.mxagent/**` or `policy/**` → deny.
 - **R2c** Shell command setting `MXCLI_ALLOW_STUDIO_PRO_OPEN` or passing
           `--force` / `--no-check` to `mxcli exec` → deny (ADR-0011).
+- **R2d** PowerShell command invoking mxcli through a dangerous construct
+          (Invoke-Expression, `iex`, `-EncodedCommand`, backtick escapes,
+          `$(...)` subexpressions, `&` call operator, `Start-Process`) OR
+          a PowerShell+mxcli invocation the parser cannot confidently
+          classify → deny (ADR-0016).
 - **R3**  Verified READ mxcli command → allow.
-- **R4**  Unlisted / unverified mxcli command → treat as WRITE.
+- **R4**  Unlisted / unverified mxcli command → treat as WRITE. An
+          unlisted CHILD of a listed parent is also WRITE: a child never
+          inherits a parent's READ class (ADR-0014).
+- **R4-c** Root invocation with `-c "<mdl>"`: every statement must begin
+          with a confirmed MDL read verb (SHOW, DESCRIBE, SELECT, OQL)
+          per the grammar at the pinned SHA (ADR-0015). Otherwise WRITE.
+          Root without `-c` (REPL or stdin) is WRITE unconditionally.
 - **R5**  WRITE when the calling agent is not an owner of the command →
           deny, naming the owner.
 - **R6**  WRITE when a Studio Pro lock file (`<project>.mpr.lock`) is
@@ -36,7 +47,7 @@ Rules, evaluated in order:
 - **R7a** WRITE when git is unavailable or the cwd is not a git working
           tree → deny (fail-closed, ADR-0010).
 - **R7**  WRITE when `.mpr` or `mprcontents/**` has uncommitted changes →
-          deny.
+          deny. The cache dir `.mxcli/` is ignored by this rule.
 - **R8**  `exec <script>` where the script contains a stop-operation → deny.
 - **R9**  `exec <script>` without a recorded passing `mxcli check` for the
           script's sha256 → deny.
@@ -202,9 +213,9 @@ def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
         subcommand = positional[0]
         if subcommand == "exec" and len(positional) >= 2:
             exec_script_path = positional[1]
-
-    if subcommand is None and inline_script is not None:
-        subcommand = "exec"
+    # Note: do NOT force subcommand = "exec" when only -c is present. Root
+    # `mxcli -c "<mdl>"` is classified by the MDL verbs in the inline script
+    # (rule R4-c), not forced to exec.
 
     return MxcliInvocation(
         subcommand=subcommand,
@@ -290,6 +301,65 @@ def _shell_modifies_protected(command: str) -> str | None:
 
 _OVERRIDE_ENV_RE = re.compile(r"MXCLI_ALLOW_STUDIO_PRO_OPEN", re.IGNORECASE)
 _FORBIDDEN_EXEC_FLAGS = {"--force", "-f", "--no-check"}
+
+
+# -----------------------------------------------------------------------------
+# MDL read-verb allowlist (rule R4-c, ADR-0015)
+# -----------------------------------------------------------------------------
+#
+# Confirmed from the MDL grammar at
+# https://github.com/mendixlabs/mxcli/blob/v0.26.0/mdl/grammar/MDLParser.g4#L931-L936
+# where `dqlStatement` ::= showStatement | describeStatement | catalogSelectQuery | oqlQuery.
+# EXPLAIN is NOT in the grammar at this tag and is deliberately omitted.
+_MDL_READ_VERBS = frozenset({"SHOW", "DESCRIBE", "SELECT", "OQL"})
+
+
+def _classify_inline_mdl(script_text: str) -> str:
+    """Return "READ" if every non-empty statement starts with a read verb; else "WRITE".
+
+    Comments and whitespace are stripped. Semicolons split statements.
+    """
+    # Strip /* … */ and // … line comments
+    stripped = re.sub(r"/\*.*?\*/", " ", script_text, flags=re.DOTALL)
+    stripped = re.sub(r"//[^\n]*", " ", stripped)
+    statements = [s.strip() for s in stripped.split(";")]
+    non_empty = [s for s in statements if s]
+    if not non_empty:
+        return "WRITE"
+    for stmt in non_empty:
+        first = stmt.split(None, 1)[0].upper() if stmt.split() else ""
+        if first not in _MDL_READ_VERBS:
+            return "WRITE"
+    return "READ"
+
+
+# -----------------------------------------------------------------------------
+# PowerShell dangerous constructs (rule R2d, ADR-0016)
+# -----------------------------------------------------------------------------
+
+_POWERSHELL_DANGER_RE = re.compile(
+    r"(?i)("
+    r"\bInvoke-Expression\b|"
+    r"\biex\b|"
+    r"(?<!\w)-EncodedCommand(?!\w)|"
+    r"(?<!\w)-enc(?!\w)|"
+    r"\bStart-Process\b|"
+    r"\$\(|"           # subexpression $(...)
+    r"`"               # backtick escape (PowerShell line/char escape)
+    r")"
+)
+
+
+def _powershell_has_danger(command: str) -> str | None:
+    m = _POWERSHELL_DANGER_RE.search(command)
+    if m:
+        return m.group(0)
+    # The call operator '&' is handled separately so we don't match '&&' (bash and-chain)
+    # or '&' used as a background operator by Claude Code tool's rendering.
+    # A PowerShell call-operator pattern is `& <path>` with a space; distinguish from `&&`.
+    if re.search(r"(?<![&])&\s+[A-Za-z0-9_./\\\"']", command) and "mxcli" in command.lower():
+        return "& (call operator)"
+    return None
 
 
 # -----------------------------------------------------------------------------
@@ -443,19 +513,32 @@ def _classify(cmd: str, commands: dict) -> str:
     return "WRITE"
 
 
-def _lookup_subcommand(positional: list[str], commands: dict) -> str:
-    """Return the longest matching key in `commands` (e.g. "auth status" over "auth").
+def _lookup_subcommand(positional: list[str], commands: dict) -> str | None:
+    """Return the longest matching key in `commands`, trying depth 3→2→1.
 
-    If no key matches, return the first positional (so an unknown parent still
-    passes through _classify, which treats absent entries as WRITE).
+    If `positional` has 2+ tokens and no deeper key matches, and the top-level
+    token is a known PARENT (any other key starts with "<top> "), return
+    None — signalling an unlisted child, which must be classified as WRITE
+    regardless of the parent's class (ADR-0014).
     """
     if not positional:
         return ""
+    # Try depth 3, then 2.
+    for depth in (3, 2):
+        if len(positional) >= depth:
+            key = " ".join(positional[:depth])
+            if key in commands:
+                return key
+    # No deeper key matched. If positional has 2+ tokens AND the top-level
+    # is a known PARENT (any other key starts with "<top> "), the child is
+    # unlisted → None (forces WRITE per ADR-0014).
+    top = positional[0]
     if len(positional) >= 2:
-        two = f"{positional[0]} {positional[1]}"
-        if two in commands:
-            return two
-    return positional[0]
+        prefix = top + " "
+        if any(k.startswith(prefix) for k in commands):
+            return None
+    # Leaf command (or single-token invocation): fall back to depth-1 lookup.
+    return top
 
 
 def decide(
@@ -536,8 +619,34 @@ def decide(
             rule="R2c",
         )
 
+    # R2d — PowerShell backstop: a dangerous construct that reaches mxcli,
+    # or a PowerShell+mxcli command we cannot confidently parse, is denied.
+    if tool_name == "PowerShell" and "mxcli" in command.lower():
+        danger = _powershell_has_danger(command)
+        if danger:
+            return Decision(
+                allow=False,
+                reason=(
+                    f"Rule 2d: PowerShell command uses `{danger}` to invoke mxcli. "
+                    "Use the Bash tool (Git Bash on Windows) for mxcli; the guard's "
+                    "PowerShell parsing is a backstop, not a supported shell "
+                    "(ADR-0016)."
+                ),
+                rule="R2d",
+            )
+
     invocations = extract_mxcli_invocations(command)
     if not invocations:
+        if tool_name == "PowerShell" and "mxcli" in command.lower():
+            return Decision(
+                allow=False,
+                reason=(
+                    "Rule 2d: PowerShell command mentions `mxcli` but the guard "
+                    "could not identify an mxcli invocation. Use the Bash tool for "
+                    "mxcli (ADR-0016)."
+                ),
+                rule="R2d",
+            )
         return Decision(allow=True, reason="No mxcli invocation detected", rule="R1")
 
     for inv in invocations:
@@ -568,25 +677,55 @@ def _decide_single(
     stop_ops: list[dict],
 ) -> Decision:
     sub = inv.subcommand
+    # Root invocation: no subcommand. Classify by inline -c MDL (rule R4-c),
+    # or treat REPL/stdin forms as WRITE.
     if sub is None:
+        if inv.inline_script is None:
+            return Decision(
+                allow=False,
+                reason=(
+                    "Rule 4-c: `mxcli` with no subcommand and no `-c` is a REPL or "
+                    "stdin invocation (write-capable). The guard cannot see the "
+                    "statements that will run. Pass `-c \"<mdl>\"` or use `exec` "
+                    "with a reviewed script file (ADR-0015)."
+                ),
+                rule="R4-c",
+            )
+        inline_cls = _classify_inline_mdl(inv.inline_script)
+        if inline_cls == "READ":
+            return Decision(
+                allow=True,
+                reason=(
+                    "Rule 4-c: `-c` script contains only MDL read verbs (SHOW, "
+                    "DESCRIBE, SELECT, OQL) per the pinned grammar."
+                ),
+                rule="R3",
+            )
+        # Treat the inline MDL as an exec script for stop-op / check-marker rules.
+        sub = "exec"
+        inv.subcommand = "exec"
+
+    # Prefer two-token key (e.g. "auth status") over bare parent ("auth").
+    lookup = _lookup_subcommand(inv.args, commands) if sub != "exec" else "exec"
+    if lookup is None:
+        # Unlisted child of a known parent — force WRITE (ADR-0014).
         return Decision(
             allow=False,
             reason=(
-                "Rule 4: could not identify an mxcli subcommand (unknown invocation "
-                "shape); treating as WRITE. Rewrite the command with an explicit "
-                "subcommand."
+                f"Rule 4: `mxcli {sub} {inv.args[1] if len(inv.args) > 1 else ''}` is "
+                f"not a listed subcommand of the known parent `{sub}`. Unlisted "
+                f"children are WRITE and may never inherit the parent's READ class "
+                f"(ADR-0014). Add an entry to policy/mxcli-commands.json via a "
+                f"reviewed change if this is a legitimate command."
             ),
             rule="R4",
         )
-
-    # Prefer two-token key (e.g. "auth status") over bare parent ("auth").
-    lookup = _lookup_subcommand(inv.args, commands)
     cls = _classify(lookup, commands)
     entry = commands.get(lookup, {})
     verified = bool(entry.get("verified"))
 
     if cls == "READ":
-        return Decision(allow=True, reason=f"mxcli {sub} is READ (verified)", rule="R3")
+        return Decision(allow=True, reason=f"mxcli {lookup} is READ (verified)", rule="R3")
 
     # R5 — ownership
     owner_entry = ownership.get(agent)
