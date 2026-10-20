@@ -1,0 +1,24 @@
+{
+  "_comment": "Maps canonical capability ids (from core/capabilities.json) to Claude Code tool names (per code.claude.com/docs/en/sub-agents). Each capability produces zero or more tool names in the subagent's `tools` list. `delegate` is special: the adapter expands it to Agent(<spoke>) entries using the role's delegates_to list. `web-read` only appears when the capability is on a role; the adapter never adds PowerShell (ADR-0016). The model_tier map resolves to a Claude model alias.",
+  "_schema": {
+    "version": 1,
+    "subagent_frontmatter_source": "https://code.claude.com/docs/en/sub-agents"
+  },
+  "capability_to_tools": {
+    "read-files": ["Read"],
+    "search-files": ["Grep", "Glob"],
+    "edit-artefacts": ["Edit", "Write", "MultiEdit"],
+    "shell-read": ["Bash"],
+    "mxcli-read": ["Bash"],
+    "mxcli-write": ["Bash"],
+    "web-read": ["WebFetch", "WebSearch"],
+    "ask-human": ["AskUserQuestion"],
+    "delegate": []
+  },
+  "model_tier_to_alias": {
+    "fast": "haiku",
+    "standard": "sonnet",
+    "deep": "opus"
+  },
+  "subagent_color_default": "blue"
+}

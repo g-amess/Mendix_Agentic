@@ -1,0 +1,23 @@
+{
+  "_comment": "Write classes a role card may list in `owns`. Each class is a logical bucket of mxcli WRITE operations. The adapter uses these to generate policy/ownership.json entries that key the guard's rule R5. Phase 1 does not ship a 1:1 mapping from class → mxcli subcommands; that mapping arrives in phase 3 when the writer role is introduced.",
+  "_schema": {
+    "version": 1
+  },
+  "write_classes": {
+    "model.domain": {
+      "description": "Changes to the project's domain model: entities, attributes, associations, enumerations, indexes."
+    },
+    "model.logic": {
+      "description": "Changes to microflows, nanoflows, workflows, java actions, scheduled events."
+    },
+    "model.ui": {
+      "description": "Changes to pages, snippets, layouts, navigation, images, widgets."
+    },
+    "model.security": {
+      "description": "Changes to user roles, module roles, access rules, project security level."
+    },
+    "project.config": {
+      "description": "Changes to project-level settings, constants, configurations, OData/REST clients and services."
+    }
+  }
+}

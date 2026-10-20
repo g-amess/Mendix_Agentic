@@ -1,0 +1,19 @@
+{
+  "write_classes": {
+    "model.domain": {
+      "description": "domain"
+    },
+    "model.logic": {
+      "description": "logic"
+    },
+    "model.ui": {
+      "description": "ui"
+    },
+    "model.security": {
+      "description": "security"
+    },
+    "project.config": {
+      "description": "config"
+    }
+  }
+}

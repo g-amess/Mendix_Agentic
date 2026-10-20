@@ -1,0 +1,12 @@
+{
+  "capabilities": {
+    "read-files": {"description": "r", "read_only": true},
+    "search-files": {"description": "s", "read_only": true},
+    "edit-artefacts": {"description": "e", "read_only": false},
+    "shell-read": {"description": "sh", "read_only": true},
+    "mxcli-read": {"description": "mr", "read_only": true},
+    "mxcli-write": {"description": "mw", "read_only": false},
+    "delegate": {"description": "d", "read_only": true},
+    "ask-human": {"description": "a", "read_only": true}
+  }
+}

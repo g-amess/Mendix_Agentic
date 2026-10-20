@@ -30,7 +30,45 @@ jobs:
         run: |
           python bin/doctor.py --json
 
+      - name: Validate core/
+        shell: bash
+        run: |
+          python adapters/validate.py
+
+      - name: Build --check (adapter drift)
+        shell: bash
+        run: |
+          python adapters/claude/build.py --check
+
       - name: Unit tests
         shell: bash
         run: |
           python -m unittest discover tests -v
+
+  mxcli-tree:
+    name: mxcli command-tree check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compare installed mxcli vs policy/mxcli-commands.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/check_mxcli_tree.py --tag v0.26.0
+
+  # Optional: run `claude plugin validate` if the CLI is installable without
+  # auth. Skipped by default because `claude` requires sign-in to run.
+  # Document the skip here so a future contributor does not reinvent it.
+  claude-plugin-validate:
+    name: claude plugin validate (manual)
+    runs-on: ubuntu-latest
+    if: ${{ false }}
+    steps:
+      - run: |
+          echo "Skipped: the Claude Code CLI requires sign-in; running"
+          echo "`claude plugin validate` from CI is deferred to phase 3+ when a"
+          echo "service-account auth story is in place."

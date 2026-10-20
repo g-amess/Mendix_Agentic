@@ -27,3 +27,10 @@ Use `0000-template.md` as the starting point.
 | 0015 | 2026-10-20 | Root mxcli invocations are classified by their MDL statements          | Accepted |
 | 0016 | 2026-10-20 | Bash is the supported agent shell; PowerShell is a backstop            | Accepted |
 | 0017 | 2026-10-20 | The guard protects against agent mistakes, not deliberate evasion      | Accepted |
+| 0018 | 2026-10-20 | Role cards declare abstract capabilities and model tiers               | Accepted |
+| 0019 | 2026-10-20 | `policy/ownership.json` is generated from role cards                   | Accepted |
+| 0020 | 2026-10-20 | Generated adapter output is committed as copies; CI fails on drift     | Accepted |
+| 0021 | 2026-10-20 | Canonical frontmatter is a restricted YAML subset                      | Accepted |
+| 0022 | 2026-10-20 | The Claude Code plugin is `mendix-agentic`; this repo is its marketplace | Accepted |
+| 0023 | 2026-10-20 | Only the Claude Code adapter is built now                              | Accepted |
+| 0024 | 2026-10-20 | CI checks the installed mxcli's command tree against the inventory     | Accepted |

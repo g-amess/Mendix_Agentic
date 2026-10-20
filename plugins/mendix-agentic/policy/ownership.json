@@ -1,0 +1,7 @@
+{
+  "_comment": "GENERATED FROM core/ BY adapters/claude/build.py \u2014 DO NOT EDIT.\nRegenerate with: `python adapters/claude/build.py`.",
+  "_schema": {
+    "version": 1
+  },
+  "agents": {}
+}
