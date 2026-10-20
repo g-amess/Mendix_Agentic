@@ -3,18 +3,43 @@
 
 Two entry modes:
 
-- **Hook mode** (default when stdin is a pipe and no subcommand is given):
-  reads a Claude Code `PreToolUse` JSON payload on stdin and emits a JSON
-  decision on stdout per
-  https://code.claude.com/docs/en/hooks (fields: `hookSpecificOutput.hookEventName`,
-  `permissionDecision` ∈ {allow, deny, ask}, `permissionDecisionReason`).
-  Exit code is always 0 on a well-formed payload; a `deny` decision is
-  carried in the JSON. If the payload cannot be parsed, exit 2 (so Claude
-  Code treats stderr as the block reason — see hooks exit-code semantics).
+- **Hook mode** (default when no subcommand is given): reads a Claude Code
+  `PreToolUse` JSON payload on stdin and emits a JSON decision on stdout per
+  https://code.claude.com/docs/en/hooks (fields:
+  `hookSpecificOutput.hookEventName`, `permissionDecision` ∈ {allow, deny, ask},
+  `permissionDecisionReason`). Exit code is 0 on a well-formed payload; a
+  `deny` decision is carried in the JSON. If the payload cannot be parsed,
+  exit 2 (so Claude Code treats stderr as the block reason per hooks
+  exit-code semantics).
 
 - **CLI mode**: `mxcli_guard.py check --agent <name> -- <command>...`
   returns 0 for allow, 2 for deny. The deny reason goes to stderr. Useful
   from git hooks, CI, or other agent harnesses.
+
+Rules, evaluated in order:
+
+- **R0**  Guard raised an exception (fail-closed per ADR-0010) → deny.
+- **R1**  Not a shell/edit tool call → allow (guard has no opinion).
+- **R2**  Edit/Write/MultiEdit/NotebookEdit on `*.mpr` or `mprcontents/**`
+          → deny.
+- **R2a** Edit/Write/MultiEdit/NotebookEdit on `.mxagent/**` or `policy/**`
+          → deny (guard-state protection, ADR-0010).
+- **R2b** Shell command that modifies `.mxagent/**` or `policy/**` → deny.
+- **R2c** Shell command setting `MXCLI_ALLOW_STUDIO_PRO_OPEN` or passing
+          `--force` / `--no-check` to `mxcli exec` → deny (ADR-0011).
+- **R3**  Verified READ mxcli command → allow.
+- **R4**  Unlisted / unverified mxcli command → treat as WRITE.
+- **R5**  WRITE when the calling agent is not an owner of the command →
+          deny, naming the owner.
+- **R6**  WRITE when a Studio Pro lock file (`<project>.mpr.lock`) is
+          present → deny.
+- **R7a** WRITE when git is unavailable or the cwd is not a git working
+          tree → deny (fail-closed, ADR-0010).
+- **R7**  WRITE when `.mpr` or `mprcontents/**` has uncommitted changes →
+          deny.
+- **R8**  `exec <script>` where the script contains a stop-operation → deny.
+- **R9**  `exec <script>` without a recorded passing `mxcli check` for the
+          script's sha256 → deny.
 
 Stdlib only (ADR-0006). Python 3.10+.
 """
@@ -28,16 +53,20 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 HOOK_EVENT = "PreToolUse"
 POLICY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = POLICY_DIR.parent
 LOG_PATH_REL = ".mxagent/guard.log"
+
+# Tool-name constants
+_SHELL_TOOLS = frozenset({"Bash", "PowerShell"})
+_EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 
 # -----------------------------------------------------------------------------
 # Decision type
@@ -48,7 +77,7 @@ LOG_PATH_REL = ".mxagent/guard.log"
 class Decision:
     allow: bool
     reason: str
-    rule: str  # short identifier of the rule that fired
+    rule: str
 
     def as_hook_json(self) -> str:
         return json.dumps(
@@ -85,19 +114,17 @@ def load_stop_ops(policy_dir: Path = POLICY_DIR) -> list[dict]:
 
 
 # -----------------------------------------------------------------------------
-# Parsing helpers
+# Shell parsing helpers
 # -----------------------------------------------------------------------------
 
 _SHELL_SPLITTERS = re.compile(r"(?:\|\||&&|;|\||&(?!&))")
 
 
 def _split_shell_segments(command: str) -> list[str]:
-    """Split a Bash command on &&, ||, ;, |, & into trimmed segments."""
     return [seg.strip() for seg in _SHELL_SPLITTERS.split(command) if seg.strip()]
 
 
 def _tokenise(segment: str) -> list[str]:
-    """Shell-tokenise with graceful fallback for unbalanced quotes."""
     try:
         return shlex.split(segment, posix=True)
     except ValueError:
@@ -109,25 +136,23 @@ def _tokenise(segment: str) -> list[str]:
 
 @dataclass
 class MxcliInvocation:
-    subcommand: str | None  # None if we could not identify one
+    subcommand: str | None
     args: list[str]
     mpr_path: str | None
-    inline_script: str | None  # from -c <script>
-    exec_script_path: str | None  # from `exec <path>`
+    inline_script: str | None
+    exec_script_path: str | None
     raw_tokens: list[str]
+    flags: list[str]  # all `-foo`/`--foo` tokens from the mxcli invocation
 
 
 def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
-    """Parse a tokenised segment starting with `mxcli` (possibly after env prefixes)."""
     i = 0
-    # Allow env var prefixes like FOO=bar BAZ=qux mxcli ...
     while i < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[i]):
         i += 1
     if i >= len(tokens):
         return None
     exe = tokens[i]
     base = os.path.basename(exe)
-    # Strip .exe / .cmd / .bat extension
     base_noext = re.sub(r"\.(exe|cmd|bat)$", "", base, flags=re.IGNORECASE)
     if base_noext.lower() != "mxcli":
         return None
@@ -138,8 +163,8 @@ def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
     exec_script_path: str | None = None
     subcommand: str | None = None
     positional: list[str] = []
+    flags: list[str] = []
 
-    # Options that take a value (both --long and -s short forms we care about).
     value_opts = {"-p", "--project", "-c", "--command", "-o", "--output"}
 
     while i < len(tokens):
@@ -153,6 +178,7 @@ def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
                 mpr_path = val
             elif tok in {"-c", "--command"}:
                 inline_script = val
+            flags.append(tok)
             i += 2
             continue
         m_eq = re.match(r"^(--?[A-Za-z0-9][A-Za-z0-9-]*)=(.*)$", tok)
@@ -162,10 +188,11 @@ def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
                 mpr_path = val
             elif opt in {"-c", "--command"}:
                 inline_script = val
+            flags.append(opt)
             i += 1
             continue
         if tok.startswith("-"):
-            # Unknown flag; skip just this token (treat as valueless)
+            flags.append(tok.split("=", 1)[0])
             i += 1
             continue
         positional.append(tok)
@@ -176,7 +203,6 @@ def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
         if subcommand == "exec" and len(positional) >= 2:
             exec_script_path = positional[1]
 
-    # If -c is used and no subcommand present, treat as exec of inline MDL
     if subcommand is None and inline_script is not None:
         subcommand = "exec"
 
@@ -187,6 +213,7 @@ def _parse_mxcli(tokens: list[str]) -> MxcliInvocation | None:
         inline_script=inline_script,
         exec_script_path=exec_script_path,
         raw_tokens=tokens,
+        flags=flags,
     )
 
 
@@ -203,6 +230,69 @@ def extract_mxcli_invocations(command: str) -> list[MxcliInvocation]:
 
 
 # -----------------------------------------------------------------------------
+# Protected-path detection (rules R2a, R2b)
+# -----------------------------------------------------------------------------
+
+_MPR_RE = re.compile(r"(?:^|[\\/])mprcontents[\\/]", re.IGNORECASE)
+_PROTECTED_PATH_RE = re.compile(
+    r"(?:(?:^|[\s\"'=/\\])(?:\.mxagent|policy)(?:[/\\]|\s|$|\"|'))",
+    re.IGNORECASE,
+)
+_MUTATING_VERBS = re.compile(
+    r"(?i)(?<![A-Za-z0-9_-])("
+    r"rm|del|erase|mv|cp|move|copy|rmdir|rd|"
+    r"Remove-Item|Move-Item|Copy-Item|"
+    r"Set-Content|Add-Content|Out-File|Clear-Content|New-Item|"
+    r"tee"
+    r")(?![A-Za-z0-9_-])"
+)
+_REDIR_INTO_PROTECTED = re.compile(
+    r">>?\s*[\"']?\S*(?:\.mxagent|policy)[/\\]", re.IGNORECASE
+)
+
+
+def _is_mpr_path(path: str) -> bool:
+    norm = path.replace("\\", "/")
+    name = os.path.basename(norm)
+    if fnmatch.fnmatchcase(name, "*.mpr"):
+        return True
+    if norm.startswith("mprcontents/") or "/mprcontents/" in norm:
+        return True
+    return False
+
+
+def _is_protected_state_path(path: str) -> bool:
+    norm = path.replace("\\", "/")
+    while norm.startswith("./"):
+        norm = norm[2:]
+    if norm.startswith(".mxagent/") or "/.mxagent/" in "/" + norm:
+        return True
+    if norm.startswith("policy/") or "/policy/" in "/" + norm:
+        return True
+    if norm in {".mxagent", "policy"}:
+        return True
+    return False
+
+
+def _shell_modifies_protected(command: str) -> str | None:
+    """Return the matching segment if the shell command modifies .mxagent/ or policy/."""
+    if _REDIR_INTO_PROTECTED.search(command):
+        return "redirection into a protected path"
+    for seg in _split_shell_segments(command):
+        if _PROTECTED_PATH_RE.search(seg) and _MUTATING_VERBS.search(seg):
+            return seg[:120]
+    return None
+
+
+# -----------------------------------------------------------------------------
+# Override detection (rule R2c)
+# -----------------------------------------------------------------------------
+
+_OVERRIDE_ENV_RE = re.compile(r"MXCLI_ALLOW_STUDIO_PRO_OPEN", re.IGNORECASE)
+_FORBIDDEN_EXEC_FLAGS = {"--force", "-f", "--no-check"}
+
+
+# -----------------------------------------------------------------------------
 # Environment helpers (lock file, git, stop ops, check cache)
 # -----------------------------------------------------------------------------
 
@@ -214,7 +304,7 @@ def _candidate_mpr_dirs(mpr_path: str | None, cwd: Path) -> list[Path]:
         if not p.is_absolute():
             p = cwd / p
         if p.suffix.lower() == ".mpr":
-            dirs.append(p.parent if p.parent != Path("") else cwd)
+            dirs.append(p.parent if str(p.parent) else cwd)
         else:
             dirs.append(p)
     dirs.append(cwd)
@@ -222,12 +312,6 @@ def _candidate_mpr_dirs(mpr_path: str | None, cwd: Path) -> list[Path]:
 
 
 def studio_pro_lock_present(mpr_path: str | None, cwd: Path) -> str | None:
-    """Return the lock-file path if a Studio Pro lock is present, else None.
-
-    Lock-file convention per v0.26.0 cmd_exec.go: `<project>.mpr.lock` beside
-    the `.mpr`. We check both an explicit `-p <path>` and any `*.mpr.lock`
-    siblings in the candidate directories.
-    """
     for d in _candidate_mpr_dirs(mpr_path, cwd):
         if not d.exists():
             continue
@@ -239,33 +323,53 @@ def studio_pro_lock_present(mpr_path: str | None, cwd: Path) -> str | None:
                 lock = p.with_suffix(p.suffix + ".lock")
                 if lock.exists():
                     return str(lock)
-        for entry in d.iterdir():
-            if entry.name.endswith(".mpr.lock") and entry.is_file():
-                return str(entry)
+        try:
+            for entry in d.iterdir():
+                if entry.name.endswith(".mpr.lock") and entry.is_file():
+                    return str(entry)
+        except OSError:
+            continue
     return None
 
 
-def mpr_has_uncommitted_changes(cwd: Path) -> str | None:
-    """Return the first dirty path matching *.mpr or mprcontents/**, else None.
-
-    Falls back to None if git is unavailable; the guard treats absence as
-    'cannot verify, do not block on this rule alone'. (Rule 7 is a best-effort
-    check — the lock-file rule remains the primary stop.)
-    """
+def _run_git(args: list[str], cwd: Path, timeout: int = 5) -> tuple[int, str]:
+    env = os.environ.copy()
+    # Constrain git's upward walk so a test temp dir inside a user profile that
+    # happens to sit under a parent repo cannot cross into it.
+    ceiling = env.get("MXAGENT_GIT_CEILING")
+    if ceiling:
+        env["GIT_CEILING_DIRECTORIES"] = ceiling
     try:
         p = subprocess.run(
-            ["git", "-C", str(cwd), "status", "--porcelain"],
+            ["git", *args],
+            cwd=str(cwd),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=5,
+            timeout=timeout,
         )
+        return p.returncode, (p.stdout or "").strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        return 127, ""
+
+
+def _git_available() -> bool:
+    return shutil.which("git") is not None
+
+
+def _is_git_worktree(cwd: Path) -> bool:
+    if not _git_available():
+        return False
+    rc, out = _run_git(["rev-parse", "--is-inside-work-tree"], cwd)
+    return rc == 0 and out.lower() == "true"
+
+
+def mpr_has_uncommitted_changes(cwd: Path) -> str | None:
+    rc, out = _run_git(["status", "--porcelain"], cwd)
+    if rc != 0:
         return None
-    if p.returncode != 0:
-        return None
-    for line in p.stdout.splitlines():
-        # Format: XY <path>
+    for line in out.splitlines():
         if len(line) < 4:
             continue
         path = line[3:].strip().strip('"')
@@ -275,7 +379,6 @@ def mpr_has_uncommitted_changes(cwd: Path) -> str | None:
 
 
 def _normalise_mdl(text: str) -> str:
-    """Collapse whitespace and upper-case for substring matching."""
     return re.sub(r"\s+", " ", text).upper()
 
 
@@ -312,24 +415,12 @@ def _read_script_text(inv: MxcliInvocation, cwd: Path) -> str | None:
 
 
 # -----------------------------------------------------------------------------
-# Edit/Write path check (rule 2)
+# Edit/Write path extraction (rules R2 and R2a)
 # -----------------------------------------------------------------------------
-
-_MPR_PATTERNS = ("*.mpr",)
-
-
-def _is_mpr_path(path: str) -> bool:
-    name = os.path.basename(path.replace("\\", "/"))
-    norm = path.replace("\\", "/")
-    if any(fnmatch.fnmatchcase(name, pat) for pat in _MPR_PATTERNS):
-        return True
-    if norm.startswith("mprcontents/") or "/mprcontents/" in norm:
-        return True
-    return False
 
 
 def _edit_write_target(tool_name: str, tool_input: dict) -> str | None:
-    if tool_name in {"Edit", "Write", "MultiEdit", "NotebookEdit"}:
+    if tool_name in _EDIT_TOOLS:
         for key in ("file_path", "notebook_path", "path"):
             val = tool_input.get(key)
             if isinstance(val, str) and val:
@@ -345,16 +436,26 @@ def _edit_write_target(tool_name: str, tool_input: dict) -> str | None:
 def _classify(cmd: str, commands: dict) -> str:
     entry = commands.get(cmd)
     if not entry:
-        return "WRITE"  # rule 4
-    cls = entry.get("class", "WRITE").upper()
+        return "WRITE"
+    cls = str(entry.get("class", "WRITE")).upper()
     if cls == "READ" and entry.get("verified") is True:
         return "READ"
-    if cls == "READ" and entry.get("verified") is not True:
-        # Unverified READ falls back to WRITE per ADR-0007
-        return "WRITE"
-    if cls == "UNKNOWN":
-        return "WRITE"
     return "WRITE"
+
+
+def _lookup_subcommand(positional: list[str], commands: dict) -> str:
+    """Return the longest matching key in `commands` (e.g. "auth status" over "auth").
+
+    If no key matches, return the first positional (so an unknown parent still
+    passes through _classify, which treats absent entries as WRITE).
+    """
+    if not positional:
+        return ""
+    if len(positional) >= 2:
+        two = f"{positional[0]} {positional[1]}"
+        if two in commands:
+            return two
+    return positional[0]
 
 
 def decide(
@@ -367,35 +468,78 @@ def decide(
     ownership: dict,
     stop_ops: list[dict],
 ) -> Decision:
-    # Rule 2 — Edit/Write on *.mpr or mprcontents/**
+    # R2 / R2a — Edit-family tools on protected paths
     target = _edit_write_target(tool_name, tool_input)
-    if target and _is_mpr_path(target):
+    if target:
+        if _is_mpr_path(target):
+            return Decision(
+                allow=False,
+                reason=(
+                    f"Rule 2: model files are only changed via `mxcli exec`, not "
+                    f"direct Edit/Write (target: {target}). Draft an MDL script, run "
+                    f"`mxcli check`, get approval, then `mxcli exec`."
+                ),
+                rule="R2",
+            )
+        if _is_protected_state_path(target):
+            return Decision(
+                allow=False,
+                reason=(
+                    f"Rule 2a: `{target}` is protected guard state "
+                    f"(`.mxagent/**` and `policy/**`). Change these through a "
+                    f"reviewed git commit on the main branch, not from an agent "
+                    f"tool call."
+                ),
+                rule="R2a",
+            )
+
+    # R1 — not a shell tool and not an edit tool → allow
+    if tool_name not in _SHELL_TOOLS:
+        if tool_name in _EDIT_TOOLS:
+            return Decision(allow=True, reason="Edit/Write on non-protected path", rule="R1")
+        return Decision(
+            allow=True,
+            reason=f"Tool `{tool_name}` is not shell/edit; guard has no opinion",
+            rule="R1",
+        )
+
+    command = tool_input.get("command", "")
+    if not isinstance(command, str) or not command.strip():
+        return Decision(
+            allow=True,
+            reason="No command string present; guard has no opinion",
+            rule="R1",
+        )
+
+    # R2b — shell command modifies .mxagent/** or policy/**
+    hit = _shell_modifies_protected(command)
+    if hit:
         return Decision(
             allow=False,
             reason=(
-                f"Rule 2: model files are only changed via `mxcli exec`, not direct "
-                f"Edit/Write (target: {target}). Draft an MDL script, run `mxcli check`, "
-                f"get approval, then `mxcli exec`."
+                f"Rule 2b: shell command appears to modify protected guard state "
+                f"(`.mxagent/**` or `policy/**`): `{hit}`. Guard state changes go "
+                f"through a reviewed git commit, not an agent tool call."
             ),
-            rule="R2",
+            rule="R2b",
         )
 
-    # Not a bash/mxcli command and not Edit/Write → allow (rule 1)
-    if tool_name != "Bash":
-        if tool_name in {"Edit", "Write", "MultiEdit", "NotebookEdit"}:
-            # Target was non-mpr, allow
-            return Decision(allow=True, reason="Edit/Write on non-model path", rule="R1")
-        return Decision(allow=True, reason="Tool is not Bash/Edit/Write; guard has no opinion", rule="R1")
-
-    command = tool_input.get("command", "")
-    if not isinstance(command, str):
-        return Decision(allow=True, reason="No command string present; guard has no opinion", rule="R1")
+    # R2c — command tries to set MXCLI_ALLOW_STUDIO_PRO_OPEN
+    if _OVERRIDE_ENV_RE.search(command):
+        return Decision(
+            allow=False,
+            reason=(
+                "Rule 2c: `MXCLI_ALLOW_STUDIO_PRO_OPEN` disables the Studio Pro "
+                "lock-file check in mxcli; agents may never set it. Close Studio "
+                "Pro, or escalate to a human reviewer who can run the command."
+            ),
+            rule="R2c",
+        )
 
     invocations = extract_mxcli_invocations(command)
     if not invocations:
         return Decision(allow=True, reason="No mxcli invocation detected", rule="R1")
 
-    # If multiple mxcli invocations in the same command, deny on the first that would deny.
     for inv in invocations:
         d = _decide_single(
             inv=inv,
@@ -407,7 +551,11 @@ def decide(
         )
         if not d.allow:
             return d
-    return Decision(allow=True, reason="All mxcli invocations in command are READ or permitted", rule="R3")
+    return Decision(
+        allow=True,
+        reason="All mxcli invocations in command are READ or permitted",
+        rule="R3",
+    )
 
 
 def _decide_single(
@@ -424,60 +572,101 @@ def _decide_single(
         return Decision(
             allow=False,
             reason=(
-                "Rule 4: could not identify an mxcli subcommand (unknown invocation shape); "
-                "treating as WRITE. Rewrite the command with an explicit subcommand."
+                "Rule 4: could not identify an mxcli subcommand (unknown invocation "
+                "shape); treating as WRITE. Rewrite the command with an explicit "
+                "subcommand."
             ),
             rule="R4",
         )
 
-    cls = _classify(sub, commands)
-    entry = commands.get(sub, {})
+    # Prefer two-token key (e.g. "auth status") over bare parent ("auth").
+    lookup = _lookup_subcommand(inv.args, commands)
+    cls = _classify(lookup, commands)
+    entry = commands.get(lookup, {})
     verified = bool(entry.get("verified"))
 
     if cls == "READ":
         return Decision(allow=True, reason=f"mxcli {sub} is READ (verified)", rule="R3")
 
-    # From here on we are treating this as WRITE (rule 4 covers unknown/unverified).
-    # Rule 5 — ownership
+    # R5 — ownership
     owner_entry = ownership.get(agent)
     if not owner_entry or sub not in owner_entry.get("allow", []):
         owners = [name for name, data in ownership.items() if sub in data.get("allow", [])]
         owner_hint = (
             f"Owners of `{sub}`: {', '.join(owners)}." if owners else
             f"No agent currently owns `{sub}` (phase 1 ships ownership.json empty). "
-            "Hand this write to a designated writer, or add the agent to policy/ownership.json "
-            "via a reviewed change."
+            "Hand this write to a designated writer, or add the agent to "
+            "policy/ownership.json via a reviewed change."
         )
         reason_prefix = "Rule 4+5" if not entry or not verified else "Rule 5"
         return Decision(
             allow=False,
             reason=(
-                f"{reason_prefix}: `mxcli {sub}` is a WRITE and agent `{agent}` is not "
-                f"authorised. {owner_hint}"
+                f"{reason_prefix}: `mxcli {sub}` is a WRITE and agent `{agent}` is "
+                f"not authorised. {owner_hint}"
             ),
             rule="R5",
         )
 
-    # Rule 6 — Studio Pro lock file present
+    # R2c (again, at mxcli flag granularity) — exec with --force or --no-check
+    if sub == "exec":
+        forbidden = sorted(set(inv.flags) & _FORBIDDEN_EXEC_FLAGS)
+        if forbidden:
+            return Decision(
+                allow=False,
+                reason=(
+                    f"Rule 2c: `mxcli exec {' '.join(forbidden)}` bypasses mxcli's "
+                    "own safety checks (Studio Pro lock, pre-exec validation). "
+                    "Agents may never pass these flags. Remove them and let mxcli "
+                    "run its checks, or escalate to a human reviewer."
+                ),
+                rule="R2c",
+            )
+
+    # R6 — Studio Pro lock
     lock = studio_pro_lock_present(inv.mpr_path, cwd)
     if lock:
         return Decision(
             allow=False,
             reason=(
                 f"Rule 6: Studio Pro has the project open (lock file: {lock}). "
-                "Close Studio Pro or use the MCP path. Do not pass `--force` to bypass."
+                "Close Studio Pro and retry. Do not use `--force` or set "
+                "`MXCLI_ALLOW_STUDIO_PRO_OPEN`."
             ),
             rule="R6",
         )
 
-    # Rule 7 — .mpr / mprcontents/ dirty
+    # R7a — fail closed: WRITE requires git and a git worktree
+    if not _git_available():
+        return Decision(
+            allow=False,
+            reason=(
+                "Rule 7a: git is not available on PATH. Install git — the guard "
+                "needs it to confirm the model is committed before a WRITE."
+            ),
+            rule="R7a",
+        )
+    if not _is_git_worktree(cwd):
+        return Decision(
+            allow=False,
+            reason=(
+                f"Rule 7a: `{cwd}` is not inside a git working tree. Agents may "
+                f"only WRITE from a git-tracked project so the change is "
+                f"reversible. Run `git init` and commit the project, or move to a "
+                f"tracked clone."
+            ),
+            rule="R7a",
+        )
+
+    # R7 — dirty mpr
     dirty = mpr_has_uncommitted_changes(cwd)
     if dirty:
         return Decision(
             allow=False,
             reason=(
-                f"Rule 7: `{dirty}` has uncommitted changes. Commit or snapshot the "
-                "model before running a WRITE command, so the change is reversible."
+                f"Rule 7: `{dirty}` has uncommitted changes. Commit or snapshot "
+                f"the model before running a WRITE command so the change is "
+                f"reversible."
             ),
             rule="R7",
         )
@@ -488,30 +677,29 @@ def _decide_single(
             return Decision(
                 allow=False,
                 reason=(
-                    "Rule 8/9: `mxcli exec` was issued but the script could not be read "
-                    "(no `-c` and no readable file argument). Pass the script file explicitly."
+                    "Rule 8/9: `mxcli exec` was issued but the script could not be "
+                    "read (no `-c` and no readable file argument). Pass the script "
+                    "file explicitly."
                 ),
                 rule="R8",
             )
-        # Rule 8 — stop ops
         hit = script_contains_stop_op(script_text, stop_ops)
         if hit:
             return Decision(
                 allow=False,
                 reason=(
                     f"Rule 8: script contains banned MDL `{hit.get('pattern')}` "
-                    f"({hit.get('id')}: {hit.get('reason')}). "
-                    "Remove the statement or escalate to a human reviewer."
+                    f"({hit.get('id')}: {hit.get('reason')}). Remove the statement "
+                    f"or escalate to a human reviewer."
                 ),
                 rule="R8",
             )
-        # Rule 9 — must have passing check
         if not check_passed_for(script_text, cwd):
             return Decision(
                 allow=False,
                 reason=(
-                    "Rule 9: no recorded passing `mxcli check` for this script. "
-                    "Run `mxcli check` first; on success write "
+                    "Rule 9: no recorded passing `mxcli check` for this script. Run "
+                    "`mxcli check` first; on success write "
                     f"`.mxagent/checks/{script_sha256(script_text)}.ok` and retry."
                 ),
                 rule="R9",
@@ -522,6 +710,21 @@ def _decide_single(
         reason=f"mxcli {sub} is a WRITE and agent `{agent}` is authorised; preconditions clear.",
         rule="R5",
     )
+
+
+def decide_safe(**kwargs) -> Decision:
+    """Fail-closed wrapper (R0, ADR-0010): any exception in decide → deny."""
+    try:
+        return decide(**kwargs)
+    except Exception as e:  # noqa: BLE001 — explicitly fail-closed
+        return Decision(
+            allow=False,
+            reason=(
+                f"Rule 0: guard raised {type(e).__name__}: {e}. Fail-closed per "
+                f"ADR-0010. Fix the guard or the policy data; do not retry."
+            ),
+            rule="R0",
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -549,7 +752,7 @@ def log_decision(
         with open(log_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec) + "\n")
     except OSError:
-        pass  # logging must never block a decision
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -571,18 +774,26 @@ def run_hook_mode(stdin_text: str, cwd: Path | None = None) -> tuple[str, int]:
     tool_input = payload.get("tool_input") or {}
     cwd_path = Path(payload.get("cwd") or (cwd or Path.cwd()))
     agent = _agent_from_env()
-    commands = load_commands()
-    ownership = load_ownership()
-    stop_ops = load_stop_ops()
-    decision = decide(
-        tool_name=tool_name,
-        tool_input=tool_input,
-        agent=agent,
-        cwd=cwd_path,
-        commands=commands,
-        ownership=ownership,
-        stop_ops=stop_ops,
-    )
+    try:
+        commands = load_commands()
+        ownership = load_ownership()
+        stop_ops = load_stop_ops()
+    except Exception as e:
+        decision = Decision(
+            allow=False,
+            reason=f"Rule 0: policy data unreadable ({type(e).__name__}: {e}). Fail-closed per ADR-0010.",
+            rule="R0",
+        )
+    else:
+        decision = decide_safe(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            agent=agent,
+            cwd=cwd_path,
+            commands=commands,
+            ownership=ownership,
+            stop_ops=stop_ops,
+        )
     log_decision(
         mode="hook",
         agent=agent,
@@ -595,22 +806,28 @@ def run_hook_mode(stdin_text: str, cwd: Path | None = None) -> tuple[str, int]:
 
 def run_cli_check(agent: str, command_tokens: list[str], cwd: Path | None = None) -> tuple[str, int]:
     cwd_path = cwd or Path.cwd()
-    # Reconstruct a command string: if tokens look like a single Bash command, join;
-    # if the first token is `Edit` or `Write`, treat specially via --tool.
     command = " ".join(shlex.quote(t) for t in command_tokens)
     tool_input = {"command": command}
-    commands = load_commands()
-    ownership = load_ownership()
-    stop_ops = load_stop_ops()
-    decision = decide(
-        tool_name="Bash",
-        tool_input=tool_input,
-        agent=agent,
-        cwd=cwd_path,
-        commands=commands,
-        ownership=ownership,
-        stop_ops=stop_ops,
-    )
+    try:
+        commands = load_commands()
+        ownership = load_ownership()
+        stop_ops = load_stop_ops()
+    except Exception as e:
+        decision = Decision(
+            allow=False,
+            reason=f"Rule 0: policy data unreadable ({type(e).__name__}: {e}). Fail-closed per ADR-0010.",
+            rule="R0",
+        )
+    else:
+        decision = decide_safe(
+            tool_name="Bash",
+            tool_input=tool_input,
+            agent=agent,
+            cwd=cwd_path,
+            commands=commands,
+            ownership=ownership,
+            stop_ops=stop_ops,
+        )
     log_decision(mode="cli", agent=agent, tool_name="Bash", decision=decision)
     msg = ("ALLOW: " if decision.allow else "DENY: ") + decision.reason
     return msg, (0 if decision.allow else 2)
@@ -629,7 +846,6 @@ def _preview(d: dict, limit: int = 200) -> dict:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        # Hook mode on stdin
         stdin_text = sys.stdin.read()
         out, rc = run_hook_mode(stdin_text)
         if out:

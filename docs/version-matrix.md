@@ -11,6 +11,12 @@ the row was added — rerun the checks before relying on them.
 | Python       | 3.10    | 3.10, 3.11, 3.12 | Required for `bin/doctor.py` and `policy/mxcli_guard.py`. Stdlib only (ADR-0006).                           | Y        |
 | git          | 2.30    | 2.40+           | Needed for pre-commit hooks and CRLF handling. No lower minimum enforced by `bin/doctor` today.             | UNVERIFIED |
 
+**Note (2026-10-20):** mxcli v0.27.0 was released 2026-10-15 but we remain
+pinned at v0.26.0 (ADR-0013). Any upgrade requires re-running
+[`docs/research/mxcli-inventory.md`](research/mxcli-inventory.md) and
+promoting the policy data (`policy/mxcli-commands.json`) before the pin
+moves.
+
 ## How to update this file
 
 - When a component's floor shifts, add a row and keep the old one with a

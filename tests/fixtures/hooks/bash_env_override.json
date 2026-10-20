@@ -1,0 +1,8 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "MXCLI_ALLOW_STUDIO_PRO_OPEN=1 mxcli -p app.mpr exec m.mdl"
+  }
+}

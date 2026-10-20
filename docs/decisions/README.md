@@ -18,3 +18,8 @@ Use `0000-template.md` as the starting point.
 | 0006 | 2026-10-20 | Policy and setup scripts are Python 3 stdlib only                       | Accepted |
 | 0007 | 2026-10-20 | Unknown or unverified mxcli commands are treated as writes              | Accepted |
 | 0008 | 2026-10-20 | Mendix depth lives in skills and lint rules, not agent bios             | Accepted |
+| 0009 | 2026-10-20 | Work happens on a branch per phase, merged via PR                       | Accepted |
+| 0010 | 2026-10-20 | The policy guard fails closed                                           | Accepted |
+| 0011 | 2026-10-20 | mxcli safety overrides are denied by the guard                          | Accepted |
+| 0012 | 2026-10-20 | mxcli command classifications come from source or `--help`              | Accepted |
+| 0013 | 2026-10-20 | mxcli is pinned at v0.26.0                                              | Accepted |

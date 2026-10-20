@@ -1,0 +1,10 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "policy/mxcli-commands.json",
+    "old_string": "x",
+    "new_string": "y"
+  }
+}

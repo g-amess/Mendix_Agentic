@@ -18,6 +18,9 @@ scratch/
 tmp/
 .mxagent/
 
+# Research clones of upstream projects (never commit)
+.research/
+
 # Editor / OS
 .DS_Store
 Thumbs.db

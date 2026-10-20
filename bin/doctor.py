@@ -179,7 +179,32 @@ def check_line_endings() -> Result:
 
 
 _CRLF_GLOBS = ("*.sh", "*.py")
-_SKIP_DIRS = {".git", ".venv", "venv", "env", "node_modules", "__pycache__"}
+_SKIP_DIRS = {
+    ".git", ".venv", "venv", "env", "node_modules", "__pycache__",
+    ".research",  # upstream clones, read-only reference material
+    ".mxagent",   # guard-managed state
+}
+
+
+def check_studio_pro_override_env() -> Result:
+    """FAIL if MXCLI_ALLOW_STUDIO_PRO_OPEN is set — it disables mxcli's lock-file safety."""
+    val = os.environ.get("MXCLI_ALLOW_STUDIO_PRO_OPEN")
+    if val is None or val == "":
+        return Result(
+            "studio-pro-override",
+            "PASS",
+            "MXCLI_ALLOW_STUDIO_PRO_OPEN is not set",
+        )
+    return Result(
+        "studio-pro-override",
+        "FAIL",
+        f"MXCLI_ALLOW_STUDIO_PRO_OPEN={val!r} is set in this shell",
+        fix=(
+            "Unset it (`unset MXCLI_ALLOW_STUDIO_PRO_OPEN` on posix; "
+            "`Remove-Item Env:MXCLI_ALLOW_STUDIO_PRO_OPEN` on PowerShell). "
+            "It disables mxcli's Studio Pro lock-file check (ADR-0011)."
+        ),
+    )
 
 
 def check_no_crlf_in_scripts() -> Result:
@@ -224,6 +249,7 @@ CHECKS = (
     check_claude_code,
     check_line_endings,
     check_no_crlf_in_scripts,
+    check_studio_pro_override_env,
 )
 
 
