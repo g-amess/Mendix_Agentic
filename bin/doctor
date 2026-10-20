@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# POSIX wrapper for bin/doctor.py
+DIR=$(cd "$(dirname "$0")" && pwd)
+if command -v python3 >/dev/null 2>&1; then
+    exec python3 "$DIR/doctor.py" "$@"
+else
+    exec python "$DIR/doctor.py" "$@"
+fi

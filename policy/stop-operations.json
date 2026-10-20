@@ -1,0 +1,26 @@
+{
+  "_comment": "MDL statements that must never be executed by an agent, regardless of ownership. The guard scans the exec script (or inline -c argument) with case-insensitive matching. Patterns are plain substrings normalised to upper case; whitespace is collapsed to single spaces before matching. Add new entries sparingly and always with a reason + source. Phase 1 seed is minimal.",
+  "_schema": {
+    "version": 1
+  },
+  "stop_operations": [
+    {
+      "id": "SO-001",
+      "pattern": "ALTER SETTINGS",
+      "reason": "Changing project-level settings via an agent is out of scope for phase 1. Settings changes require a human reviewer and a Studio Pro commit.",
+      "source": "docs/decisions/0004-one-writer-to-mpr.md"
+    },
+    {
+      "id": "SO-002",
+      "pattern": "ALTER PROJECT SECURITY LEVEL",
+      "reason": "Project security level is a sensitive change with wide blast radius (role model, access rules). Never let an agent mutate this.",
+      "source": "docs/decisions/0004-one-writer-to-mpr.md"
+    },
+    {
+      "id": "SO-003",
+      "pattern": "DROP ATTRIBUTE",
+      "reason": "Dropping an attribute from an entity risks silent data loss; combined with secured attributes this bypasses audit. Agents must not DROP ATTRIBUTE; use a scripted migration under human review instead.",
+      "source": "docs/decisions/0004-one-writer-to-mpr.md"
+    }
+  ]
+}

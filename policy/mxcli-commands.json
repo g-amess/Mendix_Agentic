@@ -1,0 +1,182 @@
+{
+  "_comment": "Classification of mxcli subcommands. Any command not listed here is treated as WRITE (ADR-0007). Source of record: docs/research/mxcli-inventory.md for mxcli v0.26.0. Promote 'verified' to true only when a direct source link has been read.",
+  "_schema": {
+    "version": 1,
+    "mxcli_version": "v0.26.0"
+  },
+  "commands": {
+    "show": {
+      "class": "READ",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_show.go"
+    },
+    "list": {
+      "class": "READ",
+      "verified": true,
+      "source": "alias of show (cmd_show.go)"
+    },
+    "describe": {
+      "class": "READ",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_describe.go"
+    },
+    "search": {
+      "class": "READ",
+      "verified": false,
+      "source": "README mentions as top-level; UNVERIFIED implementation path"
+    },
+    "callers": {
+      "class": "READ",
+      "verified": false,
+      "source": "README mentions as top-level; likely query subcommand"
+    },
+    "callees": {
+      "class": "READ",
+      "verified": false,
+      "source": "README mentions as top-level; likely query subcommand"
+    },
+    "refs": {
+      "class": "READ",
+      "verified": false,
+      "source": "README mentions as top-level; likely query subcommand"
+    },
+    "impact": {
+      "class": "READ",
+      "verified": false,
+      "source": "README mentions as top-level"
+    },
+    "context": {
+      "class": "READ",
+      "verified": false,
+      "source": "README mentions as top-level"
+    },
+    "check": {
+      "class": "READ",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_check.go",
+      "notes": "Reads only; writes a temporary scratch copy that is cleaned up on exit. Project .mpr is not modified."
+    },
+    "diff": {
+      "class": "READ",
+      "verified": false,
+      "source": "README: 'Preview changes'"
+    },
+    "log": {
+      "class": "READ",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go"
+    },
+    "query": {
+      "class": "READ",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go"
+    },
+    "lint": {
+      "class": "READ",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_lint.go"
+    },
+    "syntax": {
+      "class": "READ",
+      "verified": false,
+      "source": "README: 'Display language reference'"
+    },
+    "help": {
+      "class": "READ",
+      "verified": true,
+      "source": "built-in cobra help"
+    },
+
+    "exec": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_exec.go",
+      "notes": "Executes MDL against the .mpr. Checks Studio Pro lock file via mmpr.StudioProLockFile()."
+    },
+    "fmt": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fmt.go",
+      "notes": "Formatters rewrite files in place."
+    },
+    "fix": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go"
+    },
+    "rename": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_rename.go"
+    },
+    "new": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_new.go",
+      "notes": "Creates a new Mendix project (scaffold writes files to disk)."
+    },
+    "add-tool": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_add_tool.go",
+      "notes": "Writes tool-specific files via os.WriteFile. Claude Code target writes .claude/settings.json, CLAUDE.md, commands/, lint-rules/, lint-config.yaml, skills/. UNVERIFIED whether settings.json contains hooks or permissions."
+    },
+    "init": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "README mentions mxcli init; no cmd_init.go in cmd/mxcli root (checked at v0.26.0). May wrap add-tool.",
+      "notes": "Treat as WRITE until verified."
+    },
+    "docker": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "README mentions as top-level; cmd/mxcli/docker/ subdirectory present",
+      "notes": "Watch-out: looks like container tooling but builds images and writes cache (per README)."
+    },
+    "test": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "README mentions as top-level; cmd/mxcli/testrunner/ subdirectory",
+      "notes": "Writes test logs and starts a runtime; treat as WRITE."
+    },
+    "run": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run.go",
+      "notes": "Local dev loop writes logs/caches."
+    },
+    "tunnel-hub": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "README mentions as top-level; cmd/mxcli/tunnelhub/ subdirectory"
+    },
+    "setup": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "README: 'Configure MxBuild and dependencies'",
+      "notes": "Installs tooling into user profile."
+    },
+    "marketplace": {
+      "class": "UNKNOWN",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go"
+    },
+    "auth": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go",
+      "notes": "Writes credential cache on login."
+    },
+    "git": {
+      "class": "WRITE",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go",
+      "notes": "Includes 'mxcli git note' which writes git notes."
+    },
+    "changelog": {
+      "class": "READ",
+      "verified": false,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_changelog.go"
+    }
+  }
+}

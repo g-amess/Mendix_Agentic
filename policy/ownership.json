@@ -1,0 +1,14 @@
+{
+  "_comment": "Agent → allowed WRITE classes. Keys are agent names (free-form; convention: hyphenated-lowercase matching the harness, e.g. 'claude-code', 'cursor', or a role like 'writer'). Values are objects with: allow (list of mxcli subcommand names the agent may call), description (why this agent has those rights). Phase 1 ships with NO writer agents: everything that writes to the .mpr is denied until a writer role is added. The guard treats any WRITE whose caller is absent (or whose caller's allow list does not include the command) as DENY, naming the owner.",
+  "_schema": {
+    "version": 1,
+    "example_entry": {
+      "writer-example": {
+        "allow": ["exec", "fmt", "rename"],
+        "description": "Example writer role (not active). The orchestrator delegates .mpr mutations to this agent only."
+      }
+    }
+  },
+  "agents": {
+  }
+}

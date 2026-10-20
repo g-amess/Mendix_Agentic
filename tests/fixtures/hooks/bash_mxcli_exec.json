@@ -1,0 +1,8 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "mxcli -p app.mpr exec migrations/0001-add-entity.mdl"
+  }
+}
