@@ -1,5 +1,5 @@
 {
-  "_comment": "Classification of mxcli subcommands at tag v0.26.0. Any command not listed here is treated as WRITE (ADR-0007). An entry whose `verified` is false also falls back to WRITE in the guard (ADR-0007). An unlisted CHILD of a listed parent is also WRITE \u2014 a child never inherits a parent's READ class (ADR-0014). Source of record: docs/research/mxcli-inventory.md. Permalinks point into mendixlabs/mxcli at the pinned SHA 12ce281622a1a78ebb6737e61fe6b5ea78c59e45. Keys without a space are top-level commands; keys with one or two spaces (e.g. 'auth status', 'auth hub login') are subcommand paths up to depth 3. The `side_effects` list records non-.mpr writes (catalog cache, tempdir, docker, process, network, credentials, files) sourced from docs/research/mxcli-inventory.md \u00a73; it has no runtime effect on the guard \u2014 it is documentation for reviewers.",
+  "_comment": "Classification of mxcli subcommands at tag v0.26.0. Any command not listed here is treated as WRITE (ADR-0007). An entry whose `verified` is false also falls back to WRITE in the guard (ADR-0007). An unlisted CHILD of a listed parent is also WRITE \u2014 a child never inherits a parent's READ class (ADR-0014); that fallback is a guard safety net, not an inventory shortcut: every path the released binary exposes has its own row (ADR-0035). The released binary decides which paths exist; the source decides their class (ADR-0036). Optional `hidden` (bool) and `build_condition` (string) mark paths that may be absent from --help; each must cite the source line. This file is the source of record; the tables in docs/research/mxcli-inventory.md \u00a72 are generated from it by .github/scripts/render_mxcli_inventory.py. Permalinks point into mendixlabs/mxcli at the pinned SHA 12ce281622a1a78ebb6737e61fe6b5ea78c59e45 (the /v0.26.0/ tag form resolves to the same commit). Keys without a space are top-level commands; keys with one or two spaces are subcommand paths up to depth 3. The `side_effects` list records non-.mpr writes (catalog cache, tempdir, docker, process, network, credentials, files); it has no runtime effect on the guard \u2014 it is documentation for reviewers.",
   "_schema": {
     "version": 2,
     "mxcli_version": "v0.26.0",
@@ -16,19 +16,22 @@
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_version.go#L17",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Prints build info."
     },
     "changelog": {
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_changelog.go#L17",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Prints embedded CHANGELOG."
     },
     "syntax": {
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/help.go#L17-L96",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "MDL syntax reference from the embedded registry."
     },
     "show": {
       "class": "READ",
@@ -45,7 +48,8 @@
       "source": "alias of show (cmd_show.go)",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Dispatches to MDL `SHOW \u2026`. **Watch-out:** can trigger implicit catalog build (see \u00a73)."
     },
     "describe": {
       "class": "READ",
@@ -71,7 +75,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L15-L43",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Runs MDL `SHOW CALLERS OF`. **Watch-out:** catalog cache write."
     },
     "callees": {
       "class": "READ",
@@ -79,7 +84,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L45-L73",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Runs MDL `SHOW CALLEES OF`. **Watch-out:** catalog cache write."
     },
     "refs": {
       "class": "READ",
@@ -87,7 +93,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L75-L99",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Runs MDL `SHOW REFERENCES TO`. **Watch-out:** catalog cache write."
     },
     "impact": {
       "class": "READ",
@@ -95,7 +102,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L101-L127",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Runs MDL `SHOW IMPACT OF`. **Watch-out:** catalog cache write."
     },
     "structure": {
       "class": "READ",
@@ -103,7 +111,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L129-L172",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Runs MDL `DESCRIBE STRUCTURE`. **Watch-out:** catalog cache write."
     },
     "context": {
       "class": "READ",
@@ -111,7 +120,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L174-L223",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Runs MDL `DESCRIBE CONTEXT OF`. **Watch-out:** catalog cache write."
     },
     "check": {
       "class": "READ",
@@ -136,7 +146,8 @@
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_diff.go",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Git-ref diff (reads prior commits)."
     },
     "lint": {
       "class": "READ",
@@ -169,7 +180,8 @@
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker_oql.go#L14",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "OQL query runner (SELECT-shaped)."
     },
     "exec": {
       "class": "WRITE",
@@ -195,7 +207,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_rename.go#L17",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Rewrites the `.mpr`."
     },
     "new": {
       "class": "WRITE",
@@ -203,7 +216,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_new.go#L20",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Creates a new project scaffold."
     },
     "init": {
       "class": "WRITE",
@@ -253,6 +267,34 @@
         "files"
       ]
     },
+    "run status": {
+      "class": "READ",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L60",
+      "side_effects": []
+    },
+    "run wait": {
+      "class": "READ",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L100",
+      "side_effects": []
+    },
+    "run stop": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L79",
+      "side_effects": [
+        "process"
+      ]
+    },
+    "run restart": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L137",
+      "side_effects": [
+        "process"
+      ]
+    },
     "serve": {
       "class": "WRITE",
       "verified": true,
@@ -278,7 +320,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_tui.go#L15",
       "side_effects": [
         "process"
-      ]
+      ],
+      "notes": "Interactive TUI; writes session state."
     },
     "test": {
       "class": "WRITE",
@@ -287,7 +330,8 @@
       "side_effects": [
         "process",
         "files"
-      ]
+      ],
+      "notes": "Runs tests; boots runtime; writes deployment + logs."
     },
     "extract-templates": {
       "class": "WRITE",
@@ -295,7 +339,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_extract_templates.go#L18",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Writes templates to disk."
     },
     "sync-java-deps": {
       "class": "WRITE",
@@ -303,7 +348,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_sync_java_deps.go#L15",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Rewrites project Java deps."
     },
     "tunnel-hub": {
       "class": "WRITE",
@@ -331,7 +377,8 @@
       "side_effects": [
         "credentials",
         "network"
-      ]
+      ],
+      "notes": "Writes `~/.mxcli/auth.json`."
     },
     "auth logout": {
       "class": "WRITE",
@@ -339,7 +386,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L62",
       "side_effects": [
         "credentials"
-      ]
+      ],
+      "notes": "Rewrites credential store."
     },
     "auth status": {
       "class": "READ",
@@ -369,7 +417,8 @@
       "side_effects": [
         "credentials",
         "network"
-      ]
+      ],
+      "notes": "Writes credential store."
     },
     "auth hub status": {
       "class": "READ",
@@ -393,7 +442,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L25",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Research \"brain\" store."
     },
     "brain init": {
       "class": "WRITE",
@@ -401,7 +451,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L65",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Creates store under `.claude/brain/`."
     },
     "brain capture": {
       "class": "WRITE",
@@ -409,13 +460,15 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L85",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Writes a shard."
     },
     "brain staged": {
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L129",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Lists staged shards."
     },
     "brain promote": {
       "class": "WRITE",
@@ -475,7 +528,8 @@
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson_dump.go#L18",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Dumps a unit to stdout."
     },
     "bson discover": {
       "class": "READ",
@@ -487,7 +541,7 @@
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L16",
-      "notes": "External Mendix Catalog service, NOT the local MDL CATALOG keyword.",
+      "notes": "External Mendix Catalog service (catalog.mendix.com), NOT the local MDL `CATALOG` keyword. External Mendix Catalog service, NOT the local MDL CATALOG keyword.",
       "side_effects": [
         "network"
       ]
@@ -498,7 +552,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L33-L116",
       "side_effects": [
         "network"
-      ]
+      ],
+      "notes": "Remote HTTP read."
     },
     "catalog show": {
       "class": "READ",
@@ -506,7 +561,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L46-L185",
       "side_effects": [
         "network"
-      ]
+      ],
+      "notes": "Remote HTTP read."
     },
     "constant": {
       "class": "WRITE",
@@ -522,7 +578,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L46",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Writes project settings."
     },
     "constant unset": {
       "class": "WRITE",
@@ -544,7 +601,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L23",
       "side_effects": [
         "network"
-      ]
+      ],
+      "notes": "Mendix runtime debugger over the project. Debugger parent."
     },
     "debug status": {
       "class": "READ",
@@ -576,11 +634,68 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L278",
       "side_effects": []
     },
+    "debug enable": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L65",
+      "side_effects": [
+        "network",
+        "files"
+      ],
+      "notes": "Enables the runtime debugger and starts a session; caches the session token in <project>/.mxcli/debug-session.token (cmd_debug.go#L466)."
+    },
+    "debug disable": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L86",
+      "side_effects": [
+        "network",
+        "files"
+      ],
+      "notes": "Disables the runtime debugger and clears the cached session."
+    },
+    "debug break": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L132",
+      "side_effects": [
+        "network"
+      ],
+      "notes": "Sets a breakpoint in the running runtime."
+    },
+    "debug unbreak": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L185",
+      "side_effects": [
+        "network"
+      ],
+      "notes": "Clears a breakpoint in the running runtime."
+    },
+    "debug step": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L307",
+      "side_effects": [
+        "network"
+      ],
+      "notes": "Advances a paused microflow; mutates runtime state."
+    },
+    "debug continue": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L334",
+      "side_effects": [
+        "network"
+      ],
+      "notes": "Resumes a paused microflow; mutates runtime state."
+    },
     "diag": {
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag.go#L24",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Local telemetry over mxcli's own logs."
     },
     "diag loop-report": {
       "class": "READ",
@@ -592,7 +707,8 @@
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag_session_report.go#L120",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Reads Claude Code transcripts."
     },
     "docker": {
       "class": "WRITE",
@@ -600,7 +716,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L15",
       "side_effects": [
         "docker"
-      ]
+      ],
+      "notes": "Docker/Podman parent."
     },
     "docker check": {
       "class": "READ",
@@ -624,11 +741,85 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L387",
       "side_effects": []
     },
+    "docker run": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L54",
+      "side_effects": [
+        "docker",
+        "network",
+        "files",
+        "process"
+      ],
+      "notes": "Downloads MxBuild and runtime, initialises the stack, builds the PAD package and starts it."
+    },
+    "docker build": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L108",
+      "side_effects": [
+        "docker",
+        "files",
+        "tempdir"
+      ],
+      "notes": "Builds a Portable App Distribution package."
+    },
+    "docker init": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L230",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Writes .docker/ (docker-compose.yml, .env.example, .env) next to the .mpr."
+    },
+    "docker up": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L275",
+      "side_effects": [
+        "docker",
+        "process"
+      ],
+      "notes": "Starts the Docker Compose stack."
+    },
+    "docker down": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L323",
+      "side_effects": [
+        "docker",
+        "process"
+      ],
+      "notes": "Stops the Docker Compose stack."
+    },
+    "docker reload": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L415",
+      "side_effects": [
+        "docker",
+        "files",
+        "network"
+      ],
+      "notes": "Builds and hot-reloads the model via the M2EE admin API."
+    },
+    "docker shell": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L478",
+      "side_effects": [
+        "docker",
+        "process"
+      ],
+      "notes": "Opens an interactive shell in the Mendix container."
+    },
     "eval": {
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L17",
-      "side_effects": []
+      "side_effects": [],
+      "notes": "Parent."
     },
     "eval list": {
       "class": "READ",
@@ -642,7 +833,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L45",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Executes evals, may write reports under `-o`."
     },
     "eval run": {
       "class": "WRITE",
@@ -651,7 +843,8 @@
       "side_effects": [
         "files",
         "process"
-      ]
+      ],
+      "notes": "Spawns Claude Code headless; writes transcripts."
     },
     "fix": {
       "class": "WRITE",
@@ -659,7 +852,46 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go#L26-L95",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Runs Mendix's own tooling then rewrites the `.mpr`."
+    },
+    "fix design-properties": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix.go#L42",
+      "side_effects": [
+        "files",
+        "process"
+      ],
+      "notes": "Runs `mx rename-design-properties` and writes the renamed units back into the .mpr (clears CE6087)."
+    },
+    "fix widgets": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix.go#L66",
+      "side_effects": [
+        "files",
+        "process"
+      ],
+      "notes": "Runs `mx update-widgets` and writes the result back into the .mpr (clears CE0463)."
+    },
+    "fix hashes": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix_hashes.go#L22",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Verifies the MPR v2 ContentsHash index; with --repair rewrites it. Without --repair it only reports, but the class is per path, not per flag."
+    },
+    "fix property-sets": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix_property_sets.go#L22",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Rewrites stored units with Studio Pro's property names."
     },
     "git": {
       "class": "WRITE",
@@ -675,7 +907,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go#L22",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Writes git notes."
     },
     "layout": {
       "class": "READ",
@@ -683,7 +916,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout.go#L37",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "Default lists; subcommands below."
     },
     "layout flows": {
       "class": "READ",
@@ -691,7 +925,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout_flows.go#L29",
       "side_effects": [
         "catalog"
-      ]
+      ],
+      "notes": "**Watch-out:** catalog cache write."
     },
     "log": {
       "class": "WRITE",
@@ -699,7 +934,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L34",
       "side_effects": [
         "network"
-      ]
+      ],
+      "notes": "Runtime log-level control."
     },
     "log list": {
       "class": "READ",
@@ -713,7 +949,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L115",
       "side_effects": [
         "network"
-      ]
+      ],
+      "notes": "Mutates runtime log config."
     },
     "marketplace": {
       "class": "READ",
@@ -762,7 +999,8 @@
       "side_effects": [
         "network",
         "files"
-      ]
+      ],
+      "notes": "Writes `.mpk` to disk."
     },
     "marketplace install": {
       "class": "WRITE",
@@ -771,7 +1009,8 @@
       "side_effects": [
         "network",
         "files"
-      ]
+      ],
+      "notes": "Rewrites `.mpr`."
     },
     "marketplace update": {
       "class": "WRITE",
@@ -780,7 +1019,8 @@
       "side_effects": [
         "network",
         "files"
-      ]
+      ],
+      "notes": "Rewrites `.mpr`."
     },
     "mcp": {
       "class": "READ",
@@ -797,7 +1037,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/mcp.go#L20-L51",
       "side_effects": [
         "network"
-      ]
+      ],
+      "notes": "Prints what the server can author."
     },
     "playwright": {
       "class": "WRITE",
@@ -806,7 +1047,8 @@
       "side_effects": [
         "process",
         "files"
-      ]
+      ],
+      "notes": "Parent."
     },
     "playwright status": {
       "class": "READ",
@@ -814,33 +1056,43 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L143",
       "side_effects": []
     },
-    "run status": {
-      "class": "READ",
-      "verified": true,
-      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L60",
-      "side_effects": []
-    },
-    "run wait": {
-      "class": "READ",
-      "verified": true,
-      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L100",
-      "side_effects": []
-    },
-    "run stop": {
+    "playwright verify": {
       "class": "WRITE",
       "verified": true,
-      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L79",
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L25",
       "side_effects": [
-        "process"
-      ]
+        "process",
+        "files"
+      ],
+      "notes": "Runs playwright-cli scripts against a running app; writes traces/screenshots."
     },
-    "run restart": {
+    "playwright open": {
       "class": "WRITE",
       "verified": true,
-      "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L137",
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L112",
       "side_effects": [
         "process"
-      ]
+      ],
+      "notes": "Opens or attaches to a persistent browser session."
+    },
+    "playwright close": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L154",
+      "side_effects": [
+        "process"
+      ],
+      "notes": "Closes the browser session."
+    },
+    "playwright check": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L166",
+      "side_effects": [
+        "process",
+        "network"
+      ],
+      "notes": "Text verdict for pages of a running app; logs in when needed."
     },
     "setup": {
       "class": "WRITE",
@@ -850,6 +1102,36 @@
         "network",
         "files"
       ]
+    },
+    "setup mxbuild": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/setup.go#L37",
+      "side_effects": [
+        "network",
+        "files"
+      ],
+      "notes": "Downloads MxBuild from the Mendix CDN under ~/.mxcli/."
+    },
+    "setup mxruntime": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/setup.go#L146",
+      "side_effects": [
+        "network",
+        "files"
+      ],
+      "notes": "Downloads the Mendix runtime from the Mendix CDN."
+    },
+    "setup mxcli": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/setup.go#L282",
+      "side_effects": [
+        "network",
+        "files"
+      ],
+      "notes": "Downloads an mxcli binary from GitHub releases (default ./mxcli)."
     },
     "skill": {
       "class": "READ",
@@ -869,7 +1151,8 @@
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L97",
       "side_effects": [
         "files"
-      ]
+      ],
+      "notes": "Writes skill files."
     },
     "skill remove": {
       "class": "WRITE",
@@ -923,6 +1206,33 @@
         "files"
       ]
     },
+    "theme create": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_theme.go#L167",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Scaffolds a project-local theme."
+    },
+    "theme apply": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_theme.go#L282",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Writes theme files into the project (styling only, no model change)."
+    },
+    "theme remove": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_theme.go#L362",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Removes a theme's generated blocks from project files."
+    },
     "widget": {
       "class": "WRITE",
       "verified": true,
@@ -938,16 +1248,81 @@
       "side_effects": []
     },
     "widget docs": {
-      "class": "READ",
+      "class": "WRITE",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L69",
-      "side_effects": []
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Reclassified READ\u2192WRITE in phase 2.2: writes SKILL.md plus one file per widget into .ai-context/skills/widgets/ and .claude/skills/widgets/ (cmd_widget.go#L68-L76)."
     },
     "widget describe": {
       "class": "READ",
       "verified": true,
       "source": "https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget_describe.go#L46",
       "side_effects": []
+    },
+    "widget extract": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget.go#L25",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Writes a widget definition from an .mpk (default .mxcli/widgets/)."
+    },
+    "widget init": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget.go#L49",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Writes .def.json definitions for all project widgets."
+    },
+    "widget sync": {
+      "class": "WRITE",
+      "verified": true,
+      "source": "https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget_sync.go#L29",
+      "side_effects": [
+        "files"
+      ],
+      "notes": "Rewrites the .mpr to reconcile stored widget instances with installed packages."
+    },
+    "completion": {
+      "class": "READ",
+      "verified": true,
+      "source": "cobra built-in",
+      "side_effects": [],
+      "notes": "Prints a shell completion script to stdout (cobra default command)."
+    },
+    "completion bash": {
+      "class": "READ",
+      "verified": true,
+      "source": "cobra built-in",
+      "side_effects": [],
+      "notes": "Prints the bash completion script."
+    },
+    "completion fish": {
+      "class": "READ",
+      "verified": true,
+      "source": "cobra built-in",
+      "side_effects": [],
+      "notes": "Prints the fish completion script."
+    },
+    "completion powershell": {
+      "class": "READ",
+      "verified": true,
+      "source": "cobra built-in",
+      "side_effects": [],
+      "notes": "Prints the PowerShell completion script."
+    },
+    "completion zsh": {
+      "class": "READ",
+      "verified": true,
+      "source": "cobra built-in",
+      "side_effects": [],
+      "notes": "Prints the zsh completion script."
     }
   }
 }

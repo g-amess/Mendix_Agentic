@@ -1,10 +1,13 @@
 # mxcli inventory (v0.26.0)
 
-Last reviewed: 2026-10-20. Source of record: `mendixlabs/mxcli` at tag
-[`v0.26.0`](https://github.com/mendixlabs/mxcli/tree/v0.26.0). All rows
-below were derived by reading the Go source in a local clone of that tag at
-SHA `12ce281622a1a78ebb6737e61fe6b5ea78c59e45`. Anything still UNVERIFIED
-(see section 7) is treated as **WRITE** by the policy guard (ADR-0007).
+Last reviewed: 2026-10-21. Upstream: `mendixlabs/mxcli` at tag
+[`v0.26.0`](https://github.com/mendixlabs/mxcli/tree/v0.26.0). Command
+classes were derived by reading the Go source in a local clone of that tag at
+SHA `12ce281622a1a78ebb6737e61fe6b5ea78c59e45`; which paths exist was
+checked against the released binary (ADR-0036, §8.1). The command tables in
+§2 are generated from `policy/mxcli-commands.json` (ADR-0035). Anything still
+UNVERIFIED (see section 7) is treated as **WRITE** by the policy guard
+(ADR-0007).
 
 ## 1. Version used
 
@@ -17,271 +20,328 @@ SHA `12ce281622a1a78ebb6737e61fe6b5ea78c59e45`. Anything still UNVERIFIED
 
 Cobra command registrations are rooted in `cmd/mxcli/main.go` (lines 437–462)
 and in each file's own `init()` via `rootCmd.AddCommand(...)`. The tables
-below group commands by their parent. "Verified" means a human read the
-command's `Short`/`Long`, `RunE`/`Run`, and chased every write path reached
-from it at this SHA.
+below group commands by their parent and are **generated** from
+`policy/mxcli-commands.json`, the source of record, by
+`.github/scripts/render_mxcli_inventory.py` (ADR-0035). Edit the JSON, then
+re-run the script; a unit test fails on drift. "Verified" means the
+command's `Short`/`Long` and `RunE`/`Run` were read at this SHA and its
+write paths chased.
+
+Which paths exist is decided by the released v0.26.0 binary's `--help` tree
+(CI job `mxcli command-tree check`); their class is decided by the source
+(ADR-0036). Every path has its own row, including WRITE children of WRITE
+parents. Rows may carry `hidden` or `build_condition` when a path is absent
+from `--help`; none at v0.26.0 do (see §8).
+
+<!-- BEGIN GENERATED from policy/mxcli-commands.json by .github/scripts/render_mxcli_inventory.py; do not edit -->
 
 ### 2.1 Root commands
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| (root, no sub) | READ | Y | [cmd/mxcli/main.go#L106-L217](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/main.go#L106-L217) | Interactive REPL (also `-c` for one-liner). Reads project; no `.mpr` write except via explicit MDL statements. |
-| `version` | READ | Y | [cmd/mxcli/cmd_version.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_version.go#L17) | Prints build info. |
-| `changelog` | READ | Y | [cmd/mxcli/cmd_changelog.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_changelog.go#L17) | Prints embedded CHANGELOG. |
-| `syntax` | READ | Y | [cmd/mxcli/help.go#L17-L96](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/help.go#L17-L96) | MDL syntax reference from the embedded registry. |
-| `init` | WRITE | Y | [cmd/mxcli/init.go#L65-L686](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/init.go#L65-L686) | Writes `.ai-context/`, `.claude/` or other tool directories, `CLAUDE.md`, `AGENTS.md`, lint-config, skills tree, lint-rules, companion mod, `mdlsource/`. Distinct from `add-tool` (see §4). |
-| `add-tool` | WRITE | Y | [cmd/mxcli/cmd_add_tool.go#L16-L277](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_add_tool.go#L16-L277) | Writes tool-specific config files from `SupportedTools` map; does not run `init`'s universal setup. |
-| `show` (alias `list`) | READ | Y | [cmd/mxcli/cmd_show.go#L13-L82](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_show.go#L13-L82) | Dispatches to MDL `SHOW …`. **Watch-out:** can trigger implicit catalog build (see §2.9). |
-| `describe` | READ | Y | [cmd/mxcli/cmd_describe.go#L18-L225](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_describe.go#L18-L225) | Dispatches to MDL `DESCRIBE …`. **Watch-out:** reads `.mxcli/catalog.db`, may build it. |
-| `search` | READ | Y | [cmd/mxcli/cmd_query.go#L225-L290](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L225-L290) | Full-text catalog search. **Watch-out:** builds `.mxcli/catalog.db` on first use. |
-| `callers` | READ | Y | [cmd/mxcli/cmd_query.go#L15-L43](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L15-L43) | Runs MDL `SHOW CALLERS OF`. **Watch-out:** catalog cache write. |
-| `callees` | READ | Y | [cmd/mxcli/cmd_query.go#L45-L73](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L45-L73) | Runs MDL `SHOW CALLEES OF`. **Watch-out:** catalog cache write. |
-| `refs` | READ | Y | [cmd/mxcli/cmd_query.go#L75-L99](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L75-L99) | Runs MDL `SHOW REFERENCES TO`. **Watch-out:** catalog cache write. |
-| `impact` | READ | Y | [cmd/mxcli/cmd_query.go#L101-L127](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L101-L127) | Runs MDL `SHOW IMPACT OF`. **Watch-out:** catalog cache write. |
-| `structure` | READ | Y | [cmd/mxcli/cmd_query.go#L129-L172](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L129-L172) | Runs MDL `DESCRIBE STRUCTURE`. **Watch-out:** catalog cache write. |
-| `context` | READ | Y | [cmd/mxcli/cmd_query.go#L174-L223](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L174-L223) | Runs MDL `DESCRIBE CONTEXT OF`. **Watch-out:** catalog cache write. |
-| `check` | READ | Y | [cmd/mxcli/cmd_check.go#L21-L595](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_check.go#L21-L595) | Validates MDL script(s). **Watch-out:** script-set form (>1 file) creates a scratch-copy project in `os.TempDir()` via `scriptdiff.NewScratch`, used and deleted on exit; may build `.mxcli/catalog.db`. The real `.mpr` is never touched. |
-| `check --post-migration` | READ | Y | [cmd/mxcli/cmd_check.go#L482-L510](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_check.go#L482-L510) | Legacy-widget scan. Read-only. |
-| `diff` | READ | Y | [cmd/mxcli/cmd_diff.go#L19-L125](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_diff.go#L19-L125) | Runs the script on a scratch copy and diffs against the project. **Watch-out:** scratch-copy write to a temp dir (deleted). |
-| `diff-local` | READ | Y | [cmd/mxcli/cmd_diff.go#L_(diffLocalCmd)](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_diff.go) | Git-ref diff (reads prior commits). |
-| `lint` | READ | Y | [cmd/mxcli/cmd_lint.go#L19-L300](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_lint.go#L19-L300) | Runs built-in + Starlark rules. **Watch-out:** builds `.mxcli/catalog.db`. |
-| `report` | WRITE | Y | [cmd/mxcli/cmd_report.go#L18-L80](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_report.go#L18-L80) | Runs `REFRESH CATALOG FULL` (writes `.mxcli/catalog.db`); with `--output` writes report file. Even without `-o`, cache write is unavoidable. Classified WRITE because of the mandatory full-mode cache build. |
-| `graph-report` | WRITE | Y | [cmd/mxcli/cmd_graph_report.go#L21](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_graph_report.go#L21) | Same shape as `report`: catalog build + optional `--output` file. |
-| `exec` | WRITE | Y | [cmd/mxcli/cmd_exec.go#L17-L161](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_exec.go#L17-L161) | Executes MDL against the `.mpr`. Lock-file check (§6); `--no-check` skips pre-flight; `--force` bypasses Studio Pro lock. |
-| `fmt` | WRITE | Y | [cmd/mxcli/cmd_fmt.go#L26](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fmt.go#L26) | Formatter; `-w` writes files in place. |
-| `rename` | WRITE | Y | [cmd/mxcli/cmd_rename.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_rename.go#L17) | Rewrites the `.mpr`. |
-| `new` | WRITE | Y | [cmd/mxcli/cmd_new.go#L20](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_new.go#L20) | Creates a new project scaffold. |
-| `run` | WRITE | Y | [cmd/mxcli/cmd_run.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run.go#L18) | Boots the app locally; writes deployment artefacts, logs, lifecycle state. |
-| `serve` | WRITE | Y | [cmd/mxcli/serve.go#L37-L72](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/serve.go#L37-L72) | Starts HTTP visualization server on `--port`; builds catalog; binds a port. Not an MCP server (see §5). |
-| `lsp` | WRITE | Y | [cmd/mxcli/lsp.go#L24](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/lsp.go#L24) | Starts a long-running Language Server over stdio. |
-| `tui` | WRITE | Y | [cmd/mxcli/cmd_tui.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_tui.go#L15) | Interactive TUI; writes session state. |
-| `project-tree` | READ | Y | [cmd/mxcli/project_tree.go#L41](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/project_tree.go#L41) | Prints tree. **Watch-out:** likely catalog cache write. |
-| `test` | WRITE | Y | [cmd/mxcli/cmd_test_run.go#L15-L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_test_run.go#L15-L16) | Runs tests; boots runtime; writes deployment + logs. |
-| `playwright` | WRITE | Y | [cmd/mxcli/cmd_playwright.go#L19](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L19) | Browser automation parent; subcommands write screenshots/traces. |
-| `extract-templates` | WRITE | Y | [cmd/mxcli/cmd_extract_templates.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_extract_templates.go#L18) | Writes templates to disk. |
-| `sync-java-deps` | WRITE | Y | [cmd/mxcli/cmd_sync_java_deps.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_sync_java_deps.go#L15) | Rewrites project Java deps. |
-| `sql` | READ | Y | [cmd/mxcli/cmd_sql.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_sql.go#L16) | Runs SQL against external DB (per flags); read-only in intent, but a user-supplied query can mutate the external DB. Classify READ; the caller owns query content. |
-| `oql` | READ | Y | [cmd/mxcli/docker_oql.go#L14](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker_oql.go#L14) | OQL query runner (SELECT-shaped). |
-| `tunnel-hub` | WRITE | Y | [cmd/mxcli/cmd_tunnelhub.go#L25-L223](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_tunnelhub.go#L25-L223) | Long-running hub service; writes PID/state. Linux-only. |
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `help` | READ | Y | — | built-in cobra help |  |
+| `version` | READ | Y | — | [cmd/mxcli/cmd_version.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_version.go#L17) | Prints build info. |
+| `changelog` | READ | Y | — | [cmd/mxcli/cmd_changelog.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_changelog.go#L17) | Prints embedded CHANGELOG. |
+| `syntax` | READ | Y | — | [cmd/mxcli/help.go#L17-L96](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/help.go#L17-L96) | MDL syntax reference from the embedded registry. |
+| `show` | READ | Y | catalog | [cmd/mxcli/cmd_show.go#L13-L82](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_show.go#L13-L82) | Alias: list. Watch-out: may trigger implicit catalog cache build. |
+| `list` | READ | Y | catalog | alias of show (cmd_show.go) | Dispatches to MDL `SHOW …`. **Watch-out:** can trigger implicit catalog build (see §3). |
+| `describe` | READ | Y | catalog | [cmd/mxcli/cmd_describe.go#L18-L225](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_describe.go#L18-L225) | Watch-out: may build .mxcli/catalog.db. |
+| `search` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L225-L290](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L225-L290) | Watch-out: builds .mxcli/catalog.db on first use. |
+| `callers` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L15-L43](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L15-L43) | Runs MDL `SHOW CALLERS OF`. **Watch-out:** catalog cache write. |
+| `callees` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L45-L73](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L45-L73) | Runs MDL `SHOW CALLEES OF`. **Watch-out:** catalog cache write. |
+| `refs` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L75-L99](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L75-L99) | Runs MDL `SHOW REFERENCES TO`. **Watch-out:** catalog cache write. |
+| `impact` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L101-L127](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L101-L127) | Runs MDL `SHOW IMPACT OF`. **Watch-out:** catalog cache write. |
+| `structure` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L129-L172](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L129-L172) | Runs MDL `DESCRIBE STRUCTURE`. **Watch-out:** catalog cache write. |
+| `context` | READ | Y | catalog | [cmd/mxcli/cmd_query.go#L174-L223](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_query.go#L174-L223) | Runs MDL `DESCRIBE CONTEXT OF`. **Watch-out:** catalog cache write. |
+| `check` | READ | Y | catalog, tempdir | [cmd/mxcli/cmd_check.go#L21-L595](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_check.go#L21-L595) | Watch-out: multi-file form creates a temp scratch-copy via scriptdiff.NewScratch and may build .mxcli/catalog.db. The real .mpr is never modified. |
+| `diff` | READ | Y | tempdir | [cmd/mxcli/cmd_diff.go#L19-L125](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_diff.go#L19-L125) | Watch-out: scratch-copy write to a temp dir, deleted on exit. |
+| `diff-local` | READ | Y | — | [cmd/mxcli/cmd_diff.go](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_diff.go) | Git-ref diff (reads prior commits). |
+| `lint` | READ | Y | catalog | [cmd/mxcli/cmd_lint.go#L19-L300](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_lint.go#L19-L300) | Watch-out: builds .mxcli/catalog.db. |
+| `project-tree` | READ | Y | catalog | [cmd/mxcli/project_tree.go#L41](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/project_tree.go#L41) | Watch-out: likely catalog cache write. |
+| `sql` | WRITE | Y | network | [cmd/mxcli/cmd_sql.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_sql.go#L16) | Reclassified WRITE (ADR-0014 reasoning): the user-supplied query reaches an external database and can mutate it (UPDATE/DELETE/DDL). The policy does not inspect the query, so classify at the command level. |
+| `oql` | READ | Y | — | [cmd/mxcli/docker_oql.go#L14](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker_oql.go#L14) | OQL query runner (SELECT-shaped). |
+| `exec` | WRITE | Y | files | [cmd/mxcli/cmd_exec.go#L17-L161](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_exec.go#L17-L161) | Executes MDL against the .mpr. Lock-file check via mmpr.StudioProLockFile(); --force bypasses lock; --no-check skips pre-flight validation. |
+| `fmt` | WRITE | Y | files | [cmd/mxcli/cmd_fmt.go#L26](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fmt.go#L26) | `fmt -w` writes in place; `fmt` alone emits to stdout. |
+| `rename` | WRITE | Y | files | [cmd/mxcli/cmd_rename.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_rename.go#L17) | Rewrites the `.mpr`. |
+| `new` | WRITE | Y | files | [cmd/mxcli/cmd_new.go#L20](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_new.go#L20) | Creates a new project scaffold. |
+| `init` | WRITE | Y | files | [cmd/mxcli/init.go#L65-L686](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/init.go#L65-L686) | Writes .ai-context/, .claude/, CLAUDE.md, AGENTS.md, lint-config, skills tree, lint-rules, companion mod, mdlsource/. Distinct from add-tool. |
+| `add-tool` | WRITE | Y | files | [cmd/mxcli/cmd_add_tool.go#L16-L277](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_add_tool.go#L16-L277) | Writes tool-specific files from SupportedTools map. Claude Code target writes .claude/settings.json (permissions.allow + env.MXCLI_QUIET; no hooks) and CLAUDE.md. See docs/research/mxcli-inventory.md §4. |
+| `report` | WRITE | Y | catalog, files | [cmd/mxcli/cmd_report.go#L18-L80](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_report.go#L18-L80) | Runs REFRESH CATALOG FULL (writes .mxcli/catalog.db); --output writes report file. |
+| `graph-report` | WRITE | Y | catalog, files | [cmd/mxcli/cmd_graph_report.go#L21](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_graph_report.go#L21) | Catalog build + optional --output file. |
+| `run` | WRITE | Y | process, files | [cmd/mxcli/cmd_run.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run.go#L18) | Boots the app locally; writes deployment artefacts, logs, lifecycle state. |
+| `serve` | WRITE | Y | process, network | [cmd/mxcli/serve.go#L37-L72](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/serve.go#L37-L72) | HTTP visualization server; binds a port and builds catalog. Not MCP (see §5). |
+| `lsp` | WRITE | Y | process | [cmd/mxcli/lsp.go#L24](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/lsp.go#L24) | Long-running Language Server over stdio. |
+| `tui` | WRITE | Y | process | [cmd/mxcli/cmd_tui.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_tui.go#L15) | Interactive TUI; writes session state. |
+| `test` | WRITE | Y | process, files | [cmd/mxcli/cmd_test_run.go#L15-L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_test_run.go#L15-L16) | Runs tests; boots runtime; writes deployment + logs. |
+| `extract-templates` | WRITE | Y | files | [cmd/mxcli/cmd_extract_templates.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_extract_templates.go#L18) | Writes templates to disk. |
+| `sync-java-deps` | WRITE | Y | files | [cmd/mxcli/cmd_sync_java_deps.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_sync_java_deps.go#L15) | Rewrites project Java deps. |
+| `tunnel-hub` | WRITE | Y | process, network | [cmd/mxcli/cmd_tunnelhub.go#L25-L223](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_tunnelhub.go#L25-L223) | Long-running hub service; writes PID/state. Linux-only. |
+| `auth` | WRITE | Y | credentials | [cmd/mxcli/cmd_auth.go#L28](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L28) | Parent WRITE because login/logout mutate credential store. Specific READ subcommands below. |
+| `brain` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L25) | Research "brain" store. |
+| `bson` | READ | Y | — | [cmd/mxcli/cmd_bson.go#L8](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson.go#L8) |  |
+| `catalog` | READ | Y | network | [cmd/mxcli/cmd_catalog.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L16) | External Mendix Catalog service (catalog.mendix.com), NOT the local MDL `CATALOG` keyword. External Mendix Catalog service, NOT the local MDL CATALOG keyword. |
+| `constant` | WRITE | Y | files | [cmd/mxcli/cmd_constant.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L18) |  |
+| `debug` | WRITE | Y | network | [cmd/mxcli/cmd_debug.go#L23](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L23) | Mendix runtime debugger over the project. Debugger parent. |
+| `diag` | READ | Y | — | [cmd/mxcli/diag.go#L24](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag.go#L24) | Local telemetry over mxcli's own logs. |
+| `docker` | WRITE | Y | docker | [cmd/mxcli/docker.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L15) | Docker/Podman parent. |
+| `eval` | READ | Y | — | [cmd/mxcli/cmd_eval.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L17) | Parent. |
+| `fix` | WRITE | Y | files | [cmd/mxcli/cmd_fix.go#L26-L95](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go#L26-L95) | Runs Mendix's own tooling then rewrites the `.mpr`. |
+| `git` | WRITE | Y | files | [cmd/mxcli/cmd_git.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go#L17) |  |
+| `layout` | READ | Y | catalog | [cmd/mxcli/cmd_layout.go#L37](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout.go#L37) | Default lists; subcommands below. |
+| `log` | WRITE | Y | network | [cmd/mxcli/cmd_log.go#L34](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L34) | Runtime log-level control. |
+| `marketplace` | READ | Y | network | [cmd/mxcli/cmd_marketplace.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L22) |  |
+| `mcp` | READ | Y | network | [cmd/mxcli/mcp.go#L13-L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/mcp.go#L13-L18) | mxcli acts as MCP CLIENT to Studio Pro's embedded MCP server. NOT an MCP server (confirmed in inventory §5). |
+| `playwright` | WRITE | Y | process, files | [cmd/mxcli/cmd_playwright.go#L19](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L19) | Parent. |
+| `setup` | WRITE | Y | network, files | [cmd/mxcli/setup.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/setup.go#L18) |  |
+| `skill` | READ | Y | — | [cmd/mxcli/cmd_skill.go#L40](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L40) |  |
+| `theme` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L18) |  |
+| `widget` | WRITE | Y | files | [cmd/mxcli/cmd_widget.go#L20](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L20) |  |
+| `completion` | READ | Y | — | cobra built-in | Prints a shell completion script to stdout (cobra default command). |
 
 ### 2.2 `auth` subtree
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `auth` | WRITE | Y | [cmd/mxcli/cmd_auth.go#L28](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L28) | Credential subtree. |
-| `auth login` | WRITE | Y | [cmd/mxcli/cmd_auth.go#L46](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L46) | Writes `~/.mxcli/auth.json`. |
-| `auth logout` | WRITE | Y | [cmd/mxcli/cmd_auth.go#L62](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L62) | Rewrites credential store. |
-| `auth status` | READ | Y | [cmd/mxcli/cmd_auth.go#L68](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L68) | |
-| `auth list` | READ | Y | [cmd/mxcli/cmd_auth.go#L74](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L74) | |
-| `auth hub login` | WRITE | Y | [cmd/mxcli/cmd_auth_hub.go#L39](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go#L39) | Writes credential store. |
-| `auth hub status` | READ | Y | [cmd/mxcli/cmd_auth_hub.go#L45](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go#L45) | |
-| `auth hub logout` | WRITE | Y | [cmd/mxcli/cmd_auth_hub.go#L51](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go#L51) | |
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `auth` | WRITE | Y | credentials | [cmd/mxcli/cmd_auth.go#L28](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L28) | Parent WRITE because login/logout mutate credential store. Specific READ subcommands below. |
+| `auth login` | WRITE | Y | credentials, network | [cmd/mxcli/cmd_auth.go#L46](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L46) | Writes `~/.mxcli/auth.json`. |
+| `auth logout` | WRITE | Y | credentials | [cmd/mxcli/cmd_auth.go#L62](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L62) | Rewrites credential store. |
+| `auth status` | READ | Y | — | [cmd/mxcli/cmd_auth.go#L68](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L68) |  |
+| `auth list` | READ | Y | — | [cmd/mxcli/cmd_auth.go#L74](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth.go#L74) |  |
+| `auth hub` | WRITE | Y | credentials | [cmd/mxcli/cmd_auth_hub.go](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go) | Parent WRITE because login/logout mutate credential store. |
+| `auth hub login` | WRITE | Y | credentials, network | [cmd/mxcli/cmd_auth_hub.go#L39](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go#L39) | Writes credential store. |
+| `auth hub status` | READ | Y | network | [cmd/mxcli/cmd_auth_hub.go#L45](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go#L45) |  |
+| `auth hub logout` | WRITE | Y | credentials | [cmd/mxcli/cmd_auth_hub.go#L51](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_auth_hub.go#L51) |  |
 
 ### 2.3 `brain` subtree
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `brain` | WRITE | Y | [cmd/mxcli/cmd_brain.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L25) | Research "brain" store. |
-| `brain init` | WRITE | Y | [cmd/mxcli/cmd_brain.go#L65](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L65) | Creates store under `.claude/brain/`. |
-| `brain capture <text>` | WRITE | Y | [cmd/mxcli/cmd_brain.go#L85](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L85) | Writes a shard. |
-| `brain staged` | READ | Y | [cmd/mxcli/cmd_brain.go#L129](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L129) | Lists staged shards. |
-| `brain promote <id>` | WRITE | Y | [cmd/mxcli/cmd_brain.go#L191](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L191) | |
-| `brain drop <id>` | WRITE | Y | [cmd/mxcli/cmd_brain.go#L222](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L222) | |
-| `brain show [shard]` | READ | Y | [cmd/mxcli/cmd_brain.go#L248](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L248) | |
-| `brain resolve <id> <answer>` | WRITE | Y | [cmd/mxcli/cmd_brain.go#L288](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L288) | |
-| `brain plan` | READ | Y | [cmd/mxcli/cmd_brain.go#L321](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L321) | |
-| `brain brief` | READ | Y | [cmd/mxcli/cmd_brain.go#L391](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L391) | |
-| `brain check` | READ | Y | [cmd/mxcli/cmd_brain.go#L455](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L455) | |
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `brain` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L25) | Research "brain" store. |
+| `brain init` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L65](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L65) | Creates store under `.claude/brain/`. |
+| `brain capture` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L85](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L85) | Writes a shard. |
+| `brain staged` | READ | Y | — | [cmd/mxcli/cmd_brain.go#L129](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L129) | Lists staged shards. |
+| `brain promote` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L191](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L191) |  |
+| `brain drop` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L222](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L222) |  |
+| `brain show` | READ | Y | — | [cmd/mxcli/cmd_brain.go#L248](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L248) |  |
+| `brain resolve` | WRITE | Y | files | [cmd/mxcli/cmd_brain.go#L288](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L288) |  |
+| `brain plan` | READ | Y | — | [cmd/mxcli/cmd_brain.go#L321](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L321) |  |
+| `brain brief` | READ | Y | — | [cmd/mxcli/cmd_brain.go#L391](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L391) |  |
+| `brain check` | READ | Y | — | [cmd/mxcli/cmd_brain.go#L455](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_brain.go#L455) |  |
 
 ### 2.4 `bson` subtree
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `bson` | READ | Y | [cmd/mxcli/cmd_bson.go#L8](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson.go#L8) | |
-| `bson dump` | READ | Y | [cmd/mxcli/cmd_bson_dump.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson_dump.go#L18) | Dumps a unit to stdout. |
-| `bson discover` | READ | Y | [cmd/mxcli/cmd_bson_discover.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson_discover.go#L16) | |
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `bson` | READ | Y | — | [cmd/mxcli/cmd_bson.go#L8](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson.go#L8) |  |
+| `bson dump` | READ | Y | — | [cmd/mxcli/cmd_bson_dump.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson_dump.go#L18) | Dumps a unit to stdout. |
+| `bson discover` | READ | Y | — | [cmd/mxcli/cmd_bson_discover.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_bson_discover.go#L16) |  |
 
 ### 2.5 `catalog` subtree
 
-**Important:** this is the external Mendix Catalog service (`catalog.mendix.com`),
-NOT the local MDL `CATALOG` keyword.
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `catalog` | READ | Y | network | [cmd/mxcli/cmd_catalog.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L16) | External Mendix Catalog service (catalog.mendix.com), NOT the local MDL `CATALOG` keyword. External Mendix Catalog service, NOT the local MDL CATALOG keyword. |
+| `catalog search` | READ | Y | network | [cmd/mxcli/cmd_catalog.go#L33-L116](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L33-L116) | Remote HTTP read. |
+| `catalog show` | READ | Y | network | [cmd/mxcli/cmd_catalog.go#L46-L185](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L46-L185) | Remote HTTP read. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `catalog` | READ | Y | [cmd/mxcli/cmd_catalog.go#L16](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L16) | Requires `auth login`. |
-| `catalog search <query>` | READ | Y | [cmd/mxcli/cmd_catalog.go#L33-L116](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L33-L116) | Remote HTTP read. |
-| `catalog show <uuid>` | READ | Y | [cmd/mxcli/cmd_catalog.go#L46-L185](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_catalog.go#L46-L185) | Remote HTTP read. |
+### 2.6 `completion` subtree
 
-### 2.6 `constant` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `completion` | READ | Y | — | cobra built-in | Prints a shell completion script to stdout (cobra default command). |
+| `completion bash` | READ | Y | — | cobra built-in | Prints the bash completion script. |
+| `completion fish` | READ | Y | — | cobra built-in | Prints the fish completion script. |
+| `completion powershell` | READ | Y | — | cobra built-in | Prints the PowerShell completion script. |
+| `completion zsh` | READ | Y | — | cobra built-in | Prints the zsh completion script. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `constant` | WRITE | Y | [cmd/mxcli/cmd_constant.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L18) | |
-| `constant set` | WRITE | Y | [cmd/mxcli/cmd_constant.go#L46](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L46) | Writes project settings. |
-| `constant unset` | WRITE | Y | [cmd/mxcli/cmd_constant.go#L160](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L160) | |
-| `constant list` | READ | Y | [cmd/mxcli/cmd_constant.go#L189](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L189) | |
+### 2.7 `constant` subtree
 
-### 2.7 `debug` subtree (Mendix runtime debugger over the project)
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `constant` | WRITE | Y | files | [cmd/mxcli/cmd_constant.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L18) |  |
+| `constant set` | WRITE | Y | files | [cmd/mxcli/cmd_constant.go#L46](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L46) | Writes project settings. |
+| `constant unset` | WRITE | Y | files | [cmd/mxcli/cmd_constant.go#L160](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L160) |  |
+| `constant list` | READ | Y | — | [cmd/mxcli/cmd_constant.go#L189](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_constant.go#L189) |  |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `debug` | WRITE | Y | [cmd/mxcli/cmd_debug.go#L23](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L23) | Debugger parent. |
-| `debug status` | READ | Y | [cmd/mxcli/cmd_debug.go#L43](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L43) | |
-| `debug enable` / `disable` | WRITE | Y | [cmd/mxcli/cmd_debug.go#L65-L86](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L65-L86) | Toggles runtime debugger. |
-| `debug activities <mf>` | READ | Y | [cmd/mxcli/cmd_debug.go#L105](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L105) | |
-| `debug break` / `unbreak` | WRITE | Y | [cmd/mxcli/cmd_debug.go#L132-L185](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L132-L185) | Mutates breakpoint state. |
-| `debug breaks` | READ | Y | [cmd/mxcli/cmd_debug.go#L222](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L222) | |
-| `debug paused` | READ | Y | [cmd/mxcli/cmd_debug.go#L246](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L246) | |
-| `debug inspect` | READ | Y | [cmd/mxcli/cmd_debug.go#L278](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L278) | |
-| `debug step` / `continue` | WRITE | Y | [cmd/mxcli/cmd_debug.go#L307-L334](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L307-L334) | Mutates runtime state. |
+### 2.8 `debug` subtree
 
-### 2.8 `diag` subtree (local telemetry over mxcli's own logs)
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `debug` | WRITE | Y | network | [cmd/mxcli/cmd_debug.go#L23](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L23) | Mendix runtime debugger over the project. Debugger parent. |
+| `debug status` | READ | Y | — | [cmd/mxcli/cmd_debug.go#L43](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L43) |  |
+| `debug activities` | READ | Y | — | [cmd/mxcli/cmd_debug.go#L105](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L105) |  |
+| `debug breaks` | READ | Y | — | [cmd/mxcli/cmd_debug.go#L222](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L222) |  |
+| `debug paused` | READ | Y | — | [cmd/mxcli/cmd_debug.go#L246](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L246) |  |
+| `debug inspect` | READ | Y | — | [cmd/mxcli/cmd_debug.go#L278](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_debug.go#L278) |  |
+| `debug enable` | WRITE | Y | network, files | [cmd/mxcli/cmd_debug.go#L65](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L65) | Enables the runtime debugger and starts a session; caches the session token in <project>/.mxcli/debug-session.token (cmd_debug.go#L466). |
+| `debug disable` | WRITE | Y | network, files | [cmd/mxcli/cmd_debug.go#L86](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L86) | Disables the runtime debugger and clears the cached session. |
+| `debug break` | WRITE | Y | network | [cmd/mxcli/cmd_debug.go#L132](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L132) | Sets a breakpoint in the running runtime. |
+| `debug unbreak` | WRITE | Y | network | [cmd/mxcli/cmd_debug.go#L185](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L185) | Clears a breakpoint in the running runtime. |
+| `debug step` | WRITE | Y | network | [cmd/mxcli/cmd_debug.go#L307](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L307) | Advances a paused microflow; mutates runtime state. |
+| `debug continue` | WRITE | Y | network | [cmd/mxcli/cmd_debug.go#L334](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_debug.go#L334) | Resumes a paused microflow; mutates runtime state. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `diag` | READ | Y | [cmd/mxcli/diag.go#L24](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag.go#L24) | |
-| `diag loop-report` | READ | Y | [cmd/mxcli/diag_loop_report.go#L582](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag_loop_report.go#L582) | |
-| `diag session-report` | READ | Y | [cmd/mxcli/diag_session_report.go#L120](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag_session_report.go#L120) | Reads Claude Code transcripts. |
+### 2.9 `diag` subtree
 
-### 2.9 `docker` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `diag` | READ | Y | — | [cmd/mxcli/diag.go#L24](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag.go#L24) | Local telemetry over mxcli's own logs. |
+| `diag loop-report` | READ | Y | — | [cmd/mxcli/diag_loop_report.go#L582](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag_loop_report.go#L582) |  |
+| `diag session-report` | READ | Y | — | [cmd/mxcli/diag_session_report.go#L120](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/diag_session_report.go#L120) | Reads Claude Code transcripts. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `docker` | WRITE | Y | [cmd/mxcli/docker.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L15) | Docker/Podman parent. |
-| `docker run` | WRITE | Y | [cmd/mxcli/docker.go#L54](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L54) | |
-| `docker build` | WRITE | Y | [cmd/mxcli/docker.go#L108](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L108) | |
-| `docker check` | READ | Y | [cmd/mxcli/docker.go#L172](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L172) | **Watch-out:** runs mx check on a container-local temp copy; writes Docker cache layers. |
-| `docker init` | WRITE | Y | [cmd/mxcli/docker.go#L230](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L230) | |
-| `docker up` / `down` | WRITE | Y | [cmd/mxcli/docker.go#L275-L323](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L275-L323) | |
-| `docker logs` | READ | Y | [cmd/mxcli/docker.go#L354](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L354) | |
-| `docker status` | READ | Y | [cmd/mxcli/docker.go#L387](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L387) | |
-| `docker reload` | WRITE | Y | [cmd/mxcli/docker.go#L415](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L415) | |
-| `docker shell` | WRITE | Y | [cmd/mxcli/docker.go#L478](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L478) | |
+### 2.10 `docker` subtree
 
-### 2.10 `eval` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `docker` | WRITE | Y | docker | [cmd/mxcli/docker.go#L15](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L15) | Docker/Podman parent. |
+| `docker check` | READ | Y | docker, tempdir | [cmd/mxcli/docker.go#L172](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L172) | Watch-out: writes Docker cache layers and container state. |
+| `docker logs` | READ | Y | — | [cmd/mxcli/docker.go#L354](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L354) |  |
+| `docker status` | READ | Y | — | [cmd/mxcli/docker.go#L387](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/docker.go#L387) |  |
+| `docker run` | WRITE | Y | docker, network, files, process | [cmd/mxcli/docker.go#L54](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L54) | Downloads MxBuild and runtime, initialises the stack, builds the PAD package and starts it. |
+| `docker build` | WRITE | Y | docker, files, tempdir | [cmd/mxcli/docker.go#L108](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L108) | Builds a Portable App Distribution package. |
+| `docker init` | WRITE | Y | files | [cmd/mxcli/docker.go#L230](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L230) | Writes .docker/ (docker-compose.yml, .env.example, .env) next to the .mpr. |
+| `docker up` | WRITE | Y | docker, process | [cmd/mxcli/docker.go#L275](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L275) | Starts the Docker Compose stack. |
+| `docker down` | WRITE | Y | docker, process | [cmd/mxcli/docker.go#L323](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L323) | Stops the Docker Compose stack. |
+| `docker reload` | WRITE | Y | docker, files, network | [cmd/mxcli/docker.go#L415](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L415) | Builds and hot-reloads the model via the M2EE admin API. |
+| `docker shell` | WRITE | Y | docker, process | [cmd/mxcli/docker.go#L478](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/docker.go#L478) | Opens an interactive shell in the Mendix container. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `eval` | READ | Y | [cmd/mxcli/cmd_eval.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L17) | Parent. |
-| `eval check <file>` | WRITE | Y | [cmd/mxcli/cmd_eval.go#L45](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L45) | Executes evals, may write reports under `-o`. |
-| `eval list <file>` | READ | Y | [cmd/mxcli/cmd_eval.go#L238](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L238) | |
-| `eval run <file>` | WRITE | Y | [cmd/mxcli/cmd_eval_run.go#L19](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval_run.go#L19) | Spawns Claude Code headless; writes transcripts. |
+### 2.11 `eval` subtree
 
-### 2.11 `fix` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `eval` | READ | Y | — | [cmd/mxcli/cmd_eval.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L17) | Parent. |
+| `eval list` | READ | Y | — | [cmd/mxcli/cmd_eval.go#L238](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L238) |  |
+| `eval check` | WRITE | Y | files | [cmd/mxcli/cmd_eval.go#L45](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval.go#L45) | Executes evals, may write reports under `-o`. |
+| `eval run` | WRITE | Y | files, process | [cmd/mxcli/cmd_eval_run.go#L19](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_eval_run.go#L19) | Spawns Claude Code headless; writes transcripts. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `fix` | WRITE | Y | [cmd/mxcli/cmd_fix.go#L26-L95](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go#L26-L95) | Runs Mendix's own tooling then rewrites the `.mpr`. |
-| `fix design-properties` | WRITE | Y | [cmd/mxcli/cmd_fix.go#L41](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go#L41) | |
-| `fix widgets` | WRITE | Y | [cmd/mxcli/cmd_fix.go#L65](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go#L65) | |
-| `fix hashes` | WRITE | Y | [cmd/mxcli/cmd_fix_hashes.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix_hashes.go#L22) | |
-| `fix property-sets` | WRITE | Y | [cmd/mxcli/cmd_fix_property_sets.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix_property_sets.go#L22) | |
+### 2.12 `fix` subtree
 
-### 2.12 `git` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `fix` | WRITE | Y | files | [cmd/mxcli/cmd_fix.go#L26-L95](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_fix.go#L26-L95) | Runs Mendix's own tooling then rewrites the `.mpr`. |
+| `fix design-properties` | WRITE | Y | files, process | [cmd/mxcli/cmd_fix.go#L42](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix.go#L42) | Runs `mx rename-design-properties` and writes the renamed units back into the .mpr (clears CE6087). |
+| `fix widgets` | WRITE | Y | files, process | [cmd/mxcli/cmd_fix.go#L66](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix.go#L66) | Runs `mx update-widgets` and writes the result back into the .mpr (clears CE0463). |
+| `fix hashes` | WRITE | Y | files | [cmd/mxcli/cmd_fix_hashes.go#L22](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix_hashes.go#L22) | Verifies the MPR v2 ContentsHash index; with --repair rewrites it. Without --repair it only reports, but the class is per path, not per flag. |
+| `fix property-sets` | WRITE | Y | files | [cmd/mxcli/cmd_fix_property_sets.go#L22](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_fix_property_sets.go#L22) | Rewrites stored units with Studio Pro's property names. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `git` | WRITE | Y | [cmd/mxcli/cmd_git.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go#L17) | |
-| `git note [<commit>...]` | WRITE | Y | [cmd/mxcli/cmd_git.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go#L22) | Writes git notes. |
+### 2.13 `git` subtree
 
-### 2.13 `layout` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `git` | WRITE | Y | files | [cmd/mxcli/cmd_git.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go#L17) |  |
+| `git note` | WRITE | Y | files | [cmd/mxcli/cmd_git.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_git.go#L22) | Writes git notes. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `layout` | READ | Y | [cmd/mxcli/cmd_layout.go#L37](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout.go#L37) | Default lists; subcommands below. |
-| `layout flows [Module.Flow ...]` | READ | Y | [cmd/mxcli/cmd_layout_flows.go#L29](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout_flows.go#L29) | **Watch-out:** catalog cache write. |
+### 2.14 `layout` subtree
 
-### 2.14 `log` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `layout` | READ | Y | catalog | [cmd/mxcli/cmd_layout.go#L37](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout.go#L37) | Default lists; subcommands below. |
+| `layout flows` | READ | Y | catalog | [cmd/mxcli/cmd_layout_flows.go#L29](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_layout_flows.go#L29) | **Watch-out:** catalog cache write. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `log` | WRITE | Y | [cmd/mxcli/cmd_log.go#L34](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L34) | Runtime log-level control. |
-| `log list` | READ | Y | [cmd/mxcli/cmd_log.go#L78](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L78) | |
-| `log set <node> <level>` | WRITE | Y | [cmd/mxcli/cmd_log.go#L115](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L115) | Mutates runtime log config. |
+### 2.15 `log` subtree
 
-### 2.15 `marketplace` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `log` | WRITE | Y | network | [cmd/mxcli/cmd_log.go#L34](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L34) | Runtime log-level control. |
+| `log list` | READ | Y | — | [cmd/mxcli/cmd_log.go#L78](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L78) |  |
+| `log set` | WRITE | Y | network | [cmd/mxcli/cmd_log.go#L115](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_log.go#L115) | Mutates runtime log config. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `marketplace` | READ | Y | [cmd/mxcli/cmd_marketplace.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L22) | |
-| `marketplace search` | READ | Y | [cmd/mxcli/cmd_marketplace.go#L35](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L35) | |
-| `marketplace info` | READ | Y | [cmd/mxcli/cmd_marketplace.go#L50](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L50) | |
-| `marketplace versions` | READ | Y | [cmd/mxcli/cmd_marketplace.go#L59](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L59) | |
-| `marketplace download` | WRITE | Y | [cmd/mxcli/cmd_marketplace.go#L69](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L69) | Writes `.mpk` to disk. |
-| `marketplace install` | WRITE | Y | [cmd/mxcli/cmd_marketplace_install.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace_install.go#L25) | Rewrites `.mpr`. |
-| `marketplace update` | WRITE | Y | [cmd/mxcli/cmd_marketplace_update.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace_update.go#L17) | Rewrites `.mpr`. |
-| `marketplace diff` | READ | Y | [cmd/mxcli/cmd_marketplace_diff.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace_diff.go#L18) | |
+### 2.16 `marketplace` subtree
 
-### 2.16 `mcp` subtree (CLIENT to Studio Pro, not server)
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `marketplace` | READ | Y | network | [cmd/mxcli/cmd_marketplace.go#L22](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L22) |  |
+| `marketplace search` | READ | Y | network | [cmd/mxcli/cmd_marketplace.go#L35](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L35) |  |
+| `marketplace info` | READ | Y | network | [cmd/mxcli/cmd_marketplace.go#L50](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L50) |  |
+| `marketplace versions` | READ | Y | network | [cmd/mxcli/cmd_marketplace.go#L59](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L59) |  |
+| `marketplace diff` | READ | Y | network | [cmd/mxcli/cmd_marketplace_diff.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace_diff.go#L18) |  |
+| `marketplace download` | WRITE | Y | network, files | [cmd/mxcli/cmd_marketplace.go#L69](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace.go#L69) | Writes `.mpk` to disk. |
+| `marketplace install` | WRITE | Y | network, files | [cmd/mxcli/cmd_marketplace_install.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace_install.go#L25) | Rewrites `.mpr`. |
+| `marketplace update` | WRITE | Y | network, files | [cmd/mxcli/cmd_marketplace_update.go#L17](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_marketplace_update.go#L17) | Rewrites `.mpr`. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `mcp` | READ | Y | [cmd/mxcli/mcp.go#L13-L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/mcp.go#L13-L18) | mxcli acts as an **MCP client** to a running Studio Pro's embedded MCP server (via `--mcp` URL). mxcli does NOT serve MCP (see §5). |
-| `mcp capabilities` | READ | Y | [cmd/mxcli/mcp.go#L20-L51](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/mcp.go#L20-L51) | Prints what the server can author. |
+### 2.17 `mcp` subtree
 
-### 2.17 `playwright` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `mcp` | READ | Y | network | [cmd/mxcli/mcp.go#L13-L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/mcp.go#L13-L18) | mxcli acts as MCP CLIENT to Studio Pro's embedded MCP server. NOT an MCP server (confirmed in inventory §5). |
+| `mcp capabilities` | READ | Y | network | [cmd/mxcli/mcp.go#L20-L51](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/mcp.go#L20-L51) | Prints what the server can author. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `playwright` | WRITE | Y | [cmd/mxcli/cmd_playwright.go#L19](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L19) | Parent. |
-| `playwright verify` | WRITE | Y | [cmd/mxcli/cmd_playwright.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L25) | Writes traces/screenshots. |
-| `playwright open [url]` | WRITE | Y | [cmd/mxcli/cmd_playwright.go#L112](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L112) | Opens persistent browser context. |
-| `playwright status` | READ | Y | [cmd/mxcli/cmd_playwright.go#L143](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L143) | |
-| `playwright close` | WRITE | Y | [cmd/mxcli/cmd_playwright.go#L154](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L154) | |
-| `playwright check` | WRITE | Y | [cmd/mxcli/cmd_playwright.go#L166](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L166) | Writes artefacts. |
+### 2.18 `playwright` subtree
 
-### 2.18 `run` subtree (lifecycle on top of `run`)
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `playwright` | WRITE | Y | process, files | [cmd/mxcli/cmd_playwright.go#L19](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L19) | Parent. |
+| `playwright status` | READ | Y | — | [cmd/mxcli/cmd_playwright.go#L143](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_playwright.go#L143) |  |
+| `playwright verify` | WRITE | Y | process, files | [cmd/mxcli/cmd_playwright.go#L25](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L25) | Runs playwright-cli scripts against a running app; writes traces/screenshots. |
+| `playwright open` | WRITE | Y | process | [cmd/mxcli/cmd_playwright.go#L112](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L112) | Opens or attaches to a persistent browser session. |
+| `playwright close` | WRITE | Y | process | [cmd/mxcli/cmd_playwright.go#L154](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L154) | Closes the browser session. |
+| `playwright check` | WRITE | Y | process, network | [cmd/mxcli/cmd_playwright.go#L166](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_playwright.go#L166) | Text verdict for pages of a running app; logs in when needed. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `run status` | READ | Y | [cmd/mxcli/cmd_run_lifecycle.go#L60](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L60) | |
-| `run stop` | WRITE | Y | [cmd/mxcli/cmd_run_lifecycle.go#L79](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L79) | |
-| `run wait` | READ | Y | [cmd/mxcli/cmd_run_lifecycle.go#L100](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L100) | |
-| `run restart` | WRITE | Y | [cmd/mxcli/cmd_run_lifecycle.go#L137](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L137) | |
+### 2.19 `run` subtree
 
-### 2.19 `setup` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `run` | WRITE | Y | process, files | [cmd/mxcli/cmd_run.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run.go#L18) | Boots the app locally; writes deployment artefacts, logs, lifecycle state. |
+| `run status` | READ | Y | — | [cmd/mxcli/cmd_run_lifecycle.go#L60](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L60) |  |
+| `run wait` | READ | Y | — | [cmd/mxcli/cmd_run_lifecycle.go#L100](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L100) |  |
+| `run stop` | WRITE | Y | process | [cmd/mxcli/cmd_run_lifecycle.go#L79](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L79) |  |
+| `run restart` | WRITE | Y | process | [cmd/mxcli/cmd_run_lifecycle.go#L137](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_run_lifecycle.go#L137) |  |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `setup` | WRITE | Y | [cmd/mxcli/setup.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/setup.go#L18) | |
-| `setup mxbuild` | WRITE | Y | [cmd/mxcli/setup.go#L37](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/setup.go#L37) | Downloads mxbuild under `~/.mxcli/`. |
-| `setup mxruntime` | WRITE | Y | [cmd/mxcli/setup.go#L146](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/setup.go#L146) | Downloads runtime. |
-| `setup mxcli` | WRITE | Y | [cmd/mxcli/setup.go#L282](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/setup.go#L282) | Self-updates. |
+### 2.20 `setup` subtree
 
-### 2.20 `skill` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `setup` | WRITE | Y | network, files | [cmd/mxcli/setup.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/setup.go#L18) |  |
+| `setup mxbuild` | WRITE | Y | network, files | [cmd/mxcli/setup.go#L37](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/setup.go#L37) | Downloads MxBuild from the Mendix CDN under ~/.mxcli/. |
+| `setup mxruntime` | WRITE | Y | network, files | [cmd/mxcli/setup.go#L146](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/setup.go#L146) | Downloads the Mendix runtime from the Mendix CDN. |
+| `setup mxcli` | WRITE | Y | network, files | [cmd/mxcli/setup.go#L282](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/setup.go#L282) | Downloads an mxcli binary from GitHub releases (default ./mxcli). |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `skill` | READ | Y | [cmd/mxcli/cmd_skill.go#L40](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L40) | |
-| `skill list` | READ | Y | [cmd/mxcli/cmd_skill.go#L51](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L51) | |
-| `skill add <pack>` | WRITE | Y | [cmd/mxcli/cmd_skill.go#L97](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L97) | Writes skill files. |
-| `skill remove <pack>` | WRITE | Y | [cmd/mxcli/cmd_skill.go#L243](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L243) | |
-| `skill upgrade [pack]` | WRITE | Y | [cmd/mxcli/cmd_skill.go#L263](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L263) | |
+### 2.21 `skill` subtree
 
-### 2.21 `theme` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `skill` | READ | Y | — | [cmd/mxcli/cmd_skill.go#L40](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L40) |  |
+| `skill list` | READ | Y | — | [cmd/mxcli/cmd_skill.go#L51](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L51) |  |
+| `skill add` | WRITE | Y | files | [cmd/mxcli/cmd_skill.go#L97](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L97) | Writes skill files. |
+| `skill remove` | WRITE | Y | files | [cmd/mxcli/cmd_skill.go#L243](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L243) |  |
+| `skill upgrade` | WRITE | Y | files | [cmd/mxcli/cmd_skill.go#L263](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_skill.go#L263) |  |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `theme` | WRITE | Y | [cmd/mxcli/cmd_theme.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L18) | |
-| `theme list` | READ | Y | [cmd/mxcli/cmd_theme.go#L59](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L59) | |
-| `theme show` | READ | Y | [cmd/mxcli/cmd_theme.go#L100](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L100) | |
-| `theme create` | WRITE | Y | [cmd/mxcli/cmd_theme.go#L167](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L167) | |
-| `theme apply` | WRITE | Y | [cmd/mxcli/cmd_theme.go#L282](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L282) | |
-| `theme remove` | WRITE | Y | [cmd/mxcli/cmd_theme.go#L362](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L362) | |
-| `theme switcher` | WRITE | Y | [cmd/mxcli/cmd_theme.go#L407](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L407) | |
-| `theme switcher install` | WRITE | Y | [cmd/mxcli/cmd_theme.go#L425](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L425) | |
+### 2.22 `theme` subtree
 
-### 2.22 `widget` subtree
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `theme` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L18](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L18) |  |
+| `theme list` | READ | Y | — | [cmd/mxcli/cmd_theme.go#L59](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L59) |  |
+| `theme show` | READ | Y | — | [cmd/mxcli/cmd_theme.go#L100](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L100) |  |
+| `theme switcher` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L407](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L407) |  |
+| `theme switcher install` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L425](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_theme.go#L425) |  |
+| `theme create` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L167](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_theme.go#L167) | Scaffolds a project-local theme. |
+| `theme apply` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L282](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_theme.go#L282) | Writes theme files into the project (styling only, no model change). |
+| `theme remove` | WRITE | Y | files | [cmd/mxcli/cmd_theme.go#L362](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_theme.go#L362) | Removes a theme's generated blocks from project files. |
 
-| Command | Class | Verified | Source | Notes |
-|---|---|---|---|---|
-| `widget` | WRITE | Y | [cmd/mxcli/cmd_widget.go#L20](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L20) | |
-| `widget extract` | WRITE | Y | [cmd/mxcli/cmd_widget.go#L25](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L25) | |
-| `widget list` | READ | Y | [cmd/mxcli/cmd_widget.go#L42](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L42) | |
-| `widget init` | WRITE | Y | [cmd/mxcli/cmd_widget.go#L49](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L49) | |
-| `widget docs` | READ | Y | [cmd/mxcli/cmd_widget.go#L69](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L69) | |
-| `widget describe` | READ | Y | [cmd/mxcli/cmd_widget_describe.go#L46](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget_describe.go) | |
-| `widget sync` | WRITE | Y | [cmd/mxcli/cmd_widget_sync.go#L68](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget_sync.go) | Rewrites the `.mpr` to resync widget schemas. |
+### 2.23 `widget` subtree
+
+| Command | Class | Verified | Side effects | Source | Notes |
+|---|---|---|---|---|---|
+| `widget` | WRITE | Y | files | [cmd/mxcli/cmd_widget.go#L20](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L20) |  |
+| `widget list` | READ | Y | — | [cmd/mxcli/cmd_widget.go#L42](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L42) |  |
+| `widget docs` | WRITE | Y | files | [cmd/mxcli/cmd_widget.go#L69](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget.go#L69) | Reclassified READ→WRITE in phase 2.2: writes SKILL.md plus one file per widget into .ai-context/skills/widgets/ and .claude/skills/widgets/ (cmd_widget.go#L68-L76). |
+| `widget describe` | READ | Y | — | [cmd/mxcli/cmd_widget_describe.go#L46](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_widget_describe.go#L46) |  |
+| `widget extract` | WRITE | Y | files | [cmd/mxcli/cmd_widget.go#L25](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget.go#L25) | Writes a widget definition from an .mpk (default .mxcli/widgets/). |
+| `widget init` | WRITE | Y | files | [cmd/mxcli/cmd_widget.go#L49](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget.go#L49) | Writes .def.json definitions for all project widgets. |
+| `widget sync` | WRITE | Y | files | [cmd/mxcli/cmd_widget_sync.go#L29](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget_sync.go#L29) | Rewrites the .mpr to reconcile stored widget instances with installed packages. |
+
+<!-- END GENERATED -->
+
+### Not command paths
+
+These rows are behaviours of a path above, not paths of their own, so they
+have no row in `policy/mxcli-commands.json`:
+
+- **Root with no subcommand** (REPL, or `-c "<MDL>"`): READ for the REPL
+  itself; `-c` is classified by its MDL statements (ADR-0015).
+  [cmd/mxcli/main.go#L106-L217](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/main.go#L106-L217).
+- **`check --post-migration`**: a flag of `check`; legacy-widget scan, read-only.
+  [cmd/mxcli/cmd_check.go#L482-L510](https://github.com/mendixlabs/mxcli/blob/v0.26.0/cmd/mxcli/cmd_check.go#L482-L510).
 
 ## 3. Watch-out: looks READ but has side-effects
 
@@ -466,10 +526,10 @@ If a future tag adds MCP server mode, re-run this section.
   but the oldest Studio Pro version against which mxcli writes have been
   tested is not stated in source. Still UNVERIFIED pending maintainer
   confirmation.
-- **`mxcli --help` and per-command `--help` output.** Not captured on this
-  host; the inventory was derived from source. See
-  [docs/research/mxcli-help/v0.26.0/README.md](mxcli-help/v0.26.0/README.md)
-  for the capture snippet.
+- **Linux `--help` tree on a workstation.** CI walks the pinned Linux binary
+  (`mxcli command-tree check`). Locally on 2026-10-21 we walked the v0.26.0
+  Windows asset instead (see §8.1); the two are built from the same tag, but
+  only CI covers the Linux build.
 - **Catalog build timing / cost per command.** Confirmed each read command
   can trigger `ensureCatalog`, but the exact first-run cost and when the
   cache is reused vs rebuilt was not measured here.
@@ -517,3 +577,40 @@ Grep queries used:
 - `mcp serve|mcpServerCmd|jsonrpc|stdio` (MCP server mode) — nothing
   matched in the command tree.
 - `ensureCatalog|catalog\.db|REFRESH CATALOG` (implicit cache writes).
+
+### 8.1 Phase 2.2 reconciliation with the released binary (2026-10-21)
+
+CI reported 34 paths in the binary but not in the inventory, and 3 paths in
+the inventory but not in the binary (`diag session-report`,
+`extract-templates`, `mcp capabilities`).
+
+- **The 3 "missing" paths were a parser bug in our check, not hidden
+  commands.** cobra pads command names to the longest name in the block
+  (minimum 11) and then prints one space. `check_mxcli_tree.py` required two
+  spaces after the name, so the longest name of 11+ characters in a block was
+  dropped. In v0.26.0 that is `extract-templates` (root), `session-report`
+  (`diag`), `capabilities` (`mcp`) and `design-properties` (`fix`). The last
+  one was hidden from the report because it was in neither list. Source has
+  no `Hidden: true` anywhere under `cmd/mxcli/`, and none of the
+  `//go:build` files registers a command, so no row needs `hidden` or
+  `build_condition`. All three register unconditionally:
+  [mcp.go#L54-L55](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/mcp.go#L54-L55),
+  [diag_session_report.go#L120](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/diag_session_report.go#L120),
+  [cmd_extract_templates.go#L37](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_extract_templates.go#L37).
+- **Evidence.** The v0.26.0 asset `mxcli-windows-amd64.exe` (SHA-256
+  `3e88f3e09335a10eb53289681a8ec73930ce81ad2dd2b70cb836bfac89b637c6`;
+  `mxcli version v0.26.0 (2026-10-11T18:37:07Z)`) reproduced CI's 34 + 3
+  report exactly with the old parser. With the fixed parser it gives 35 + 0;
+  after this reconciliation, 156 discovered paths match the inventory. Only
+  `--help` and `--version` were run. The walk also hit a cp1252 decode error
+  on Windows, so the checker now decodes help output as UTF-8.
+- **35 rows added**, each with class, source line and side effects: the 34
+  from CI plus `fix design-properties`. `completion` and its four shells are
+  cobra's built-in command (READ, no side effects).
+- **One reclassification:** `widget docs` READ → WRITE (`files`). Its `Long`
+  says it writes `SKILL.md` and per-widget files into
+  `.ai-context/skills/widgets/` and `.claude/skills/widgets/`
+  ([cmd_widget.go#L68-L76](https://github.com/mendixlabs/mxcli/blob/12ce281622a1a78ebb6737e61fe6b5ea78c59e45/cmd/mxcli/cmd_widget.go#L68-L76)).
+- The §2 tables are now generated from `policy/mxcli-commands.json`
+  (ADR-0035); notes from the old hand-written tables moved into the JSON's
+  `notes` fields.

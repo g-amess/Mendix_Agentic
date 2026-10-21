@@ -96,7 +96,12 @@ def _download_and_verify(pin: dict, dest: Path) -> None:
     print(f"Verified sha256={actual} ({len(data)} bytes) -> {dest}")
 
 
-_USAGE_SUB_RE = re.compile(r"^\s{2,}(\S+)(?:\s{2,}|$)")
+# cobra pads each name to the longest name in the block (minimum 11) and
+# then prints ONE space before the Short text, so the longest name of 11+
+# characters is followed by a single space. Requiring two spaces there
+# silently dropped e.g. `extract-templates`, `diag session-report`,
+# `mcp capabilities` and `fix design-properties` (phase 2.2).
+_USAGE_SUB_RE = re.compile(r"^\s{2,}(\S+)(?:\s|$)")
 
 
 def _list_subcommands(binary: Path, prefix: list[str]) -> list[str]:
@@ -107,6 +112,8 @@ def _list_subcommands(binary: Path, prefix: list[str]) -> list[str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
         )
     except FileNotFoundError:
@@ -131,6 +138,19 @@ def _list_subcommands(binary: Path, prefix: list[str]) -> list[str]:
     return subs
 
 
+def _hidden_help_ok(binary: Path, path: str) -> bool:
+    p = subprocess.run(
+        [str(binary), *path.split(), "--help"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+    )
+    return p.returncode == 0 and f"mxcli {path}" in p.stdout
+
+
 def _walk_tree(binary: Path) -> set[str]:
     seen: set[str] = set()
     stack: list[list[str]] = [[]]
@@ -144,9 +164,27 @@ def _walk_tree(binary: Path) -> set[str]:
     return seen
 
 
-def _load_inventory_keys() -> set[str]:
-    data = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
-    return set(data["commands"].keys())
+def _load_inventory() -> dict[str, dict]:
+    return json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))["commands"]
+
+
+def _may_be_absent(row: dict) -> bool:
+    """ADR-0036: only rows marked hidden or build-conditional may be missing
+    from the --help tree."""
+    return bool(row.get("hidden")) or bool(row.get("build_condition"))
+
+
+def compare(discovered: set[str], inventory: dict[str, dict]) -> tuple[list[str], list[str], list[str]]:
+    """Return (missing from inventory, extra in inventory, excused absences)."""
+    # `list` is an alias of `show`; cobra's --help does not list aliases.
+    # The built-in `help` command is filtered in _list_subcommands.
+    skip = {"list", "help"}
+    inv = {k: v for k, v in inventory.items() if k not in skip}
+    missing = sorted(discovered - set(inv))
+    absent = sorted(set(inv) - discovered)
+    excused = [k for k in absent if _may_be_absent(inv[k])]
+    extra = [k for k in absent if not _may_be_absent(inv[k])]
+    return missing, extra, excused
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -170,15 +208,24 @@ def main(argv: list[str] | None = None) -> int:
 
 def _compare(binary: Path) -> int:
     discovered = _walk_tree(binary)
-    inventory = _load_inventory_keys()
-    # The inventory contains the `list` alias of `show`; mxcli's --help
-    # does not expose it as a separate command. The built-in cobra
-    # `help` command is already filtered in _list_subcommands.
-    aliases = {"list"}
-    inventory_cmp = {k for k in inventory if k not in aliases and k != "help"}
-
-    missing = sorted(discovered - inventory_cmp)
-    extra = sorted(inventory_cmp - discovered)
+    inventory = _load_inventory()
+    missing, extra, excused = compare(discovered, inventory)
+    for k in excused:
+        row = inventory[k]
+        if row.get("hidden"):
+            # A hidden cobra command still answers `<path> --help`; a path
+            # that does not exist falls through to its parent's help or
+            # errors, so check the usage line names the path.
+            if _hidden_help_ok(binary, k):
+                print(f"note: {k} is hidden; confirmed with `mxcli {k} --help`")
+            else:
+                print(
+                    f"ERROR: {k} is marked hidden but `mxcli {k} --help` does not answer for it",
+                    file=sys.stderr,
+                )
+                extra.append(k)
+        else:
+            print(f"note: {k} absent from --help (build_condition {row['build_condition']!r}); allowed")
     if missing:
         print(
             f"\nERROR: {len(missing)} command(s) in mxcli but not in inventory:",
@@ -188,15 +235,16 @@ def _compare(binary: Path) -> int:
             print(f"  + {m}", file=sys.stderr)
     if extra:
         print(
-            f"\nERROR: {len(extra)} command(s) in inventory but not in mxcli:",
+            f"\nERROR: {len(extra)} command(s) in inventory but not in mxcli "
+            "(and not marked hidden or build_condition):",
             file=sys.stderr,
         )
         for e in extra:
             print(f"  - {e}", file=sys.stderr)
     if missing or extra:
         print(
-            "\nUpdate docs/research/mxcli-inventory.md and "
-            "policy/mxcli-commands.json, then rerun.",
+            "\nUpdate policy/mxcli-commands.json, run "
+            ".github/scripts/render_mxcli_inventory.py, then rerun.",
             file=sys.stderr,
         )
         return 1

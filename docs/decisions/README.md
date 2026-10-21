@@ -44,3 +44,6 @@ Use `0000-template.md` as the starting point.
 | 0032 | 2026-10-20 | The pinned mxcli binary is verified against a recorded SHA-256         | Accepted |
 | 0033 | 2026-10-20 | CI check steps run independently                                       | Accepted |
 | 0034 | 2026-10-21 | main came from phase-1-foundation; failing merges are fixed forward    | Proposed |
+| 0035 | 2026-10-21 | The inventory lists every command path explicitly                      | Proposed |
+| 0036 | 2026-10-21 | The released binary decides which commands exist; source their class   | Proposed |
+| 0037 | 2026-10-21 | CI runs on pull requests and on pushes to main only                    | Proposed |

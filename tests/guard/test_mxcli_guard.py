@@ -924,9 +924,16 @@ class TestTwoTokenLookup(unittest.TestCase):
         self.assertTrue(d.allow, msg=d.reason)
 
     def test_docker_build_write(self):
-        """`docker build` is an unlisted child of a parent that has siblings in
-        commands.json → unlisted → R4 (ADR-0014)."""
+        """`docker build` has its own WRITE row since phase 2.2 (ADR-0035)
+        → listed WRITE → R5."""
         d = mk_decide(tool_input={"command": "mxcli docker build"})
+        self.assertFalse(d.allow)
+        self.assertEqual(d.rule, "R5")
+
+    def test_unlisted_docker_child_write(self):
+        """A child of `docker` with no row (e.g. one a newer mxcli adds) is
+        still WRITE via the parent fallback safety net → R4 (ADR-0014)."""
+        d = mk_decide(tool_input={"command": "mxcli docker frobnicate"})
         self.assertFalse(d.allow)
         self.assertEqual(d.rule, "R4")
 

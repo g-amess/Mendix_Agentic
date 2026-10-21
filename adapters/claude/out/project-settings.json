@@ -27,6 +27,11 @@
       "Bash(mxcli catalog:*)",
       "Bash(mxcli changelog:*)",
       "Bash(mxcli check:*)",
+      "Bash(mxcli completion bash:*)",
+      "Bash(mxcli completion fish:*)",
+      "Bash(mxcli completion powershell:*)",
+      "Bash(mxcli completion zsh:*)",
+      "Bash(mxcli completion:*)",
       "Bash(mxcli constant list:*)",
       "Bash(mxcli context:*)",
       "Bash(mxcli debug activities:*)",
@@ -75,7 +80,6 @@
       "Bash(mxcli theme show:*)",
       "Bash(mxcli version:*)",
       "Bash(mxcli widget describe:*)",
-      "Bash(mxcli widget docs:*)",
       "Bash(mxcli widget list:*)"
     ]
   }
