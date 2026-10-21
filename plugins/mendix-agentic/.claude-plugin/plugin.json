@@ -1,5 +1,6 @@
 {
   "name": "mendix-agentic",
+  "displayName": "Mendix Agentic",
   "version": "0.2.0-alpha",
   "description": "Mendix model-editing agents for mxcli, plus a PreToolUse policy guard that keeps writes safe.",
   "author": {

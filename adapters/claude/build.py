@@ -41,6 +41,17 @@ PLUGIN_NAME = "mendix-agentic"
 DEFAULT_OUT = REPO_ROOT / "plugins" / PLUGIN_NAME
 PROJECT_SETTINGS_OUT = ADAPTER_DIR / "out" / "project-settings.json"
 
+# Claude-only skill fields an `adapter.claude.json` sidecar may set, in
+# emission order (code.claude.com/docs/en/skills, frontmatter reference).
+CLAUDE_SKILL_FIELDS = (
+    "disable-model-invocation",
+    "user-invocable",
+    "allowed-tools",
+    "context",
+    "agent",
+    "paths",
+)
+
 GENERATED_HEADER = (
     "GENERATED FROM core/ BY adapters/claude/build.py — DO NOT EDIT.\n"
     "Regenerate with: `python adapters/claude/build.py`."
@@ -126,10 +137,43 @@ def _emit_scalar(v: Any) -> str:
     raise TypeError(f"cannot emit scalar of type {type(v).__name__}")
 
 
+_PLAIN_UNSAFE_START = tuple("[]{}&*!|>'\"%@`,#?-:")
+
+
+def _emit_plain(v: str) -> str:
+    """Emit a block-context YAML plain scalar when that is unambiguous,
+    otherwise fall back to `_emit_scalar` quoting.
+
+    Used for comma-separated tool strings (ADR-0028): commas and brackets
+    are only special inside YAML flow collections, so
+    `Read, Grep, Agent(a, b)` is a single plain scalar in block context.
+    """
+    if (
+        v
+        and v == v.strip()
+        and not v.startswith(_PLAIN_UNSAFE_START)
+        and ": " not in v
+        and " #" not in v
+        and not v.endswith(":")
+    ):
+        return v
+    return _emit_scalar(v)
+
+
+def _tools_string(tools: list[str]) -> str:
+    """Comma-separated tool list per the subagent docs (ADR-0028).
+
+    Never a YAML flow list: a flow list splits `Agent(a, b)` on the comma.
+    """
+    return ", ".join(tools)
+
+
 def _emit_frontmatter(data: dict[str, Any]) -> str:
     lines = ["---"]
     for key, value in data.items():
-        if isinstance(value, list):
+        if key == "tools" and isinstance(value, str):
+            lines.append(f"{key}: {_emit_plain(value)}")
+        elif isinstance(value, list):
             if not value:
                 lines.append(f"{key}: []")
             elif all(isinstance(x, (str, int, bool)) for x in value):
@@ -163,11 +207,17 @@ def _role_to_subagent(
             if t not in seen:
                 seen.add(t)
                 tools.append(t)
-    # delegate → Agent(<spoke>, …)
+    # delegate → Agent(<plugin>:<spoke>, …). Plugin agents are registered
+    # under their namespaced name; on Claude Code 2.1.305 an allowlist entry
+    # of the bare name matches nothing (docs/install.md, ADR-0028).
     if "delegate" in fm.get("capabilities", []):
         delegates = fm.get("delegates_to", [])
         if delegates:
-            agent_tool = "Agent(" + ",".join(sorted(delegates)) + ")"
+            agent_tool = (
+                "Agent("
+                + ", ".join(f"{PLUGIN_NAME}:{d}" for d in sorted(delegates))
+                + ")"
+            )
             if agent_tool not in seen:
                 seen.add(agent_tool)
                 tools.append(agent_tool)
@@ -177,7 +227,7 @@ def _role_to_subagent(
     sub_fm: dict[str, Any] = {
         "name": name,
         "description": fm["description"],
-        "tools": tools,
+        "tools": _tools_string(tools),
         "model": model,
     }
     skills = fm.get("skills", [])
@@ -205,16 +255,25 @@ def _write_skill(skill: dict, out_root: Path) -> None:
     dest.mkdir(parents=True)
 
     merged_fm = dict(skill["frontmatter"])
+    # Claude-only fields go top-level (ADR-0027): Claude Code reads
+    # `disable-model-invocation` etc. only there, never under `metadata`.
+    # The canonical core SKILL.md stays spec-only.
     extras = skill["claude_extras"]
-    if extras:
-        # Place Claude-only fields in `metadata.claude` to stay within the
-        # Agent Skills spec (metadata is a map of str→str; we JSON-encode).
-        md = merged_fm.get("metadata", {})
-        if not isinstance(md, dict):
-            md = {}
-        md = dict(md)
-        md["claude"] = json.dumps(extras, separators=(",", ":"))
-        merged_fm["metadata"] = md
+    for key in CLAUDE_SKILL_FIELDS:
+        if key not in extras:
+            continue
+        if key in merged_fm:
+            raise SystemExit(
+                f"ERROR: {skill['path']}: {key!r} is set in both SKILL.md and "
+                "adapter.claude.json; keep it in one place."
+            )
+        merged_fm[key] = extras[key]
+    unknown = set(extras) - set(CLAUDE_SKILL_FIELDS)
+    if unknown:
+        raise SystemExit(
+            f"ERROR: {skill['folder'] / 'adapter.claude.json'}: unknown keys "
+            f"{sorted(unknown)}; allowed: {list(CLAUDE_SKILL_FIELDS)}"
+        )
     # Rewrite SKILL.md
     body = skill["body"]
     skill_md = _emit_skill_frontmatter(merged_fm) + "\n" + body
@@ -237,15 +296,36 @@ def _emit_skill_frontmatter(data: dict[str, Any]) -> str:
             for k, v in value.items():
                 lines.append(f"  {k}: {_emit_scalar(str(v))}")
         elif isinstance(value, list):
+            # Block lists: items such as `Bash(git add:*)` or `**/*.{ts,tsx}`
+            # contain spaces and commas, which a flow list or a
+            # comma-separated string would split.
             if not value:
                 lines.append(f"{key}: []")
             else:
-                items = ", ".join(_emit_scalar(x) for x in value)
-                lines.append(f"{key}: [{items}]")
+                lines.append(f"{key}:")
+                lines.extend(f"  - {_emit_scalar(x)}" for x in value)
         else:
             lines.append(f"{key}: {_emit_scalar(value)}")
     lines.append("---")
     return "\n".join(lines) + "\n"
+
+
+# -----------------------------------------------------------------------------
+# Plugin README (generated; the plugin dir is wiped on every build)
+# -----------------------------------------------------------------------------
+
+def _plugin_readme() -> str:
+    return (
+        "# mendix-agentic (Claude Code plugin)\n"
+        "\n"
+        "<!-- " + GENERATED_HEADER.replace("\n", " ") + " -->\n"
+        "\n"
+        "Everything in this directory is generated from `core/` and `policy/` by\n"
+        "`adapters/claude/build.py`; never hand-edit it. `agents/` and `skills/`\n"
+        "are absent until `core/` ships roles and skills; the build creates them\n"
+        "only when there is something to put in them (ADR-0031). Install and\n"
+        "verification steps are in `docs/install.md`.\n"
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -275,6 +355,18 @@ def _generate_ownership(roles: list[dict]) -> dict:
 # Hooks (PreToolUse guard)
 # -----------------------------------------------------------------------------
 
+# ADR-0026: Claude Code treats a hook exit code other than 0 or 2 as a
+# non-blocking error and lets the tool call proceed. A missing interpreter
+# (127) or an exception escaping the guard (1) must still block, so any
+# non-zero exit becomes 2. Plugin hook commands run under bash on every
+# platform, Git Bash on Windows (docs/install.md), so POSIX `||` is safe.
+GUARD_FAILED_MESSAGE = "mendix-agentic guard could not run — run bin/doctor"
+GUARD_HOOK_COMMAND = (
+    'python "${CLAUDE_PLUGIN_ROOT}/policy/mxcli_guard.py"'
+    f" || {{ echo '{GUARD_FAILED_MESSAGE}' >&2; exit 2; }}"
+)
+
+
 def _hooks_json() -> dict:
     return {
         "hooks": {
@@ -284,9 +376,7 @@ def _hooks_json() -> dict:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": (
-                                "python \"${CLAUDE_PLUGIN_ROOT}/policy/mxcli_guard.py\""
-                            ),
+                            "command": GUARD_HOOK_COMMAND,
                         }
                     ],
                 }
@@ -300,12 +390,12 @@ def _hooks_json() -> dict:
 # -----------------------------------------------------------------------------
 
 def _plugin_manifest(version: str) -> dict:
-    # NOTE: `displayName` is listed in the plugin-manifest reference at
-    # code.claude.com/docs/en/plugins/manifest-reference but is rejected
-    # by `claude plugin validate` on older Claude Code CLIs. Omitted here
-    # until the installed CLI accepts it (phase 3+ check).
+    # `displayName` was rejected by `claude plugin validate` on 2.1.128 and
+    # is accepted on 2.1.305 (docs/install.md), above the pinned minimum
+    # (ADR-0025).
     return {
         "name": PLUGIN_NAME,
+        "displayName": "Mendix Agentic",
         "version": version,
         "description": (
             "Mendix model-editing agents for mxcli, plus a PreToolUse policy "
@@ -394,6 +484,7 @@ def build(core_dir: Path, policy_dir: Path, out_root: Path, version: str) -> Non
         out_root / ".claude-plugin" / "plugin.json",
         json.dumps(_plugin_manifest(version), indent=2) + "\n",
     )
+    _write_text_lf(out_root / "README.md", _plugin_readme())
 
     # Agents — only materialise the directory if at least one role exists
     # (ADR-0031: no empty directories).

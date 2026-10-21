@@ -52,12 +52,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Read pinned mxcli SHA-256
+        id: pin
+        run: python -c "import json; print('sha256=' + json.load(open('policy/mxcli-pin.json'))['pin']['sha256'])" >> "$GITHUB_OUTPUT"
+      # Keyed on the pinned hash, so a new pin never restores an old binary.
+      # The script still re-hashes a restored binary before running it.
+      - name: Cache pinned mxcli binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mxcli
+          key: mxcli-${{ steps.pin.outputs.sha256 }}
       - name: Verify + walk pinned mxcli binary
         env:
           # ADR-0032: GITHUB_TOKEN raises the API rate limit; the asset
           # download itself is unauthenticated and public.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/check_mxcli_tree.py
+        run: python .github/scripts/check_mxcli_tree.py --cache-dir ~/.cache/mxcli
 
   # Optional: run `claude plugin validate` if the CLI is installable without
   # auth. Skipped by default because `claude` requires sign-in to run.

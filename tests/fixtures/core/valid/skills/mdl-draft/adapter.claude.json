@@ -1,5 +1,5 @@
 {
   "allowed-tools": ["Read", "Grep", "Glob", "Bash(mxcli:*)"],
-  "disable-model-invocation": false,
+  "disable-model-invocation": true,
   "user-invocable": true
 }

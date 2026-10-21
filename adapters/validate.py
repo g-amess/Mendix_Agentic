@@ -42,6 +42,15 @@ _SKILL_ALLOWED_KEYS = {
     "name", "description", "license", "compatibility", "metadata", "allowed-tools",
 }
 _SKILL_REQUIRED_KEYS = {"name", "description"}
+# adapter.claude.json keys and their types; emitted top-level (ADR-0027).
+_SKILL_CLAUDE_SIDECAR_TYPES = {
+    "disable-model-invocation": bool,
+    "user-invocable": bool,
+    "allowed-tools": list,
+    "context": str,
+    "agent": str,
+    "paths": list,
+}
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
@@ -262,7 +271,32 @@ class Validator:
         if not isinstance(desc, str) or not (1 <= len(desc) <= 1024):
             self.err(path, 1, "skill description must be 1–1024 chars")
 
+        self.validate_claude_sidecar(path.parent / "adapter.claude.json", fm)
         self.skills[name] = {"frontmatter": fm, "file": str(path)}
+
+    def validate_claude_sidecar(self, sidecar: Path, fm: dict) -> None:
+        if not sidecar.exists():
+            return
+        try:
+            data = json.loads(sidecar.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            self.err(sidecar, e.lineno, f"invalid JSON: {e.msg}")
+            return
+        if not isinstance(data, dict):
+            self.err(sidecar, None, "adapter.claude.json must be a JSON object")
+            return
+        for key, value in data.items():
+            expected = _SKILL_CLAUDE_SIDECAR_TYPES.get(key)
+            if expected is None:
+                self.err(sidecar, None, f"unknown key {key!r}; allowed: {sorted(_SKILL_CLAUDE_SIDECAR_TYPES)}")
+            elif not isinstance(value, expected) or (
+                expected is list and not all(isinstance(x, str) for x in value)
+            ):
+                self.err(sidecar, None, f"{key!r} must be a {expected.__name__}")
+            elif key in fm:
+                self.err(sidecar, None, f"{key!r} is also set in SKILL.md; keep it in one place")
+        if "context" in data and data["context"] != "fork":
+            self.err(sidecar, None, "'context' must be \"fork\"")
 
     # -------------------------------------------------------------------------
     def run(self) -> int:

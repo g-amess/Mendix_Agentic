@@ -108,6 +108,17 @@ class TestInvalidSkills(unittest.TestCase):
     def test_name_mismatch(self):
         self._assert_fails_with("invalid_skill_name_mismatch", "parent")
 
+    def test_sidecar_unknown_key(self):
+        # A misspelt Claude field would otherwise be emitted top-level and
+        # silently ignored by Claude Code (ADR-0027).
+        self._assert_fails_with("invalid_skill_sidecar_unknown_key", "unknown key")
+
+
+class TestHubFixture(unittest.TestCase):
+    def test_hub_two_spokes_passes(self):
+        v = _run("hub_two_spokes")
+        self.assertEqual(v.issues, [], msg=[str(i) for i in v.issues])
+
 
 class TestRealCore(unittest.TestCase):
     """The real core/ (empty of roles in phase 2) must validate cleanly."""

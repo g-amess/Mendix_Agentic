@@ -34,6 +34,13 @@ Use `0000-template.md` as the starting point.
 | 0022 | 2026-10-20 | The Claude Code plugin is `mendix-agentic`; this repo is its marketplace | Accepted |
 | 0023 | 2026-10-20 | Only the Claude Code adapter is built now                              | Accepted |
 | 0024 | 2026-10-20 | CI checks the installed mxcli's command tree against the inventory     | Accepted |
+| 0025 | 2026-10-21 | The Claude Code minimum version is pinned and enforced by doctor       | Proposed |
+| 0026 | 2026-10-21 | Hook commands turn any guard failure into a blocking exit code         | Proposed |
+| 0027 | 2026-10-21 | Generated Claude skills carry Claude-only fields at top level          | Proposed |
+| 0028 | 2026-10-21 | Subagent tool lists are comma-separated strings, never YAML flow lists | Proposed |
+| 0029 | 2026-10-21 | No phase starts until the previous phase is merged with green CI       | Proposed |
+| 0030 | 2026-10-21 | Humans push and open PRs; agents commit locally                        | Proposed |
 | 0031 | 2026-10-20 | Drift checks compare tracked files only; no empty directories          | Accepted |
 | 0032 | 2026-10-20 | The pinned mxcli binary is verified against a recorded SHA-256         | Accepted |
 | 0033 | 2026-10-20 | CI check steps run independently                                       | Accepted |
+| 0034 | 2026-10-21 | main came from phase-1-foundation; failing merges are fixed forward    | Proposed |

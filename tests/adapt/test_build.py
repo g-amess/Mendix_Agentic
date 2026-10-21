@@ -4,7 +4,9 @@ Covers:
 - Capability mapping (role capabilities → Claude Code tools).
 - Model-tier mapping (fast/standard/deep → haiku/sonnet/opus).
 - Ownership generation (ADR-0019).
-- Skill sidecar merge.
+- Skill sidecar fields emitted top-level (ADR-0027), golden.
+- Subagent `tools:` as a comma-separated string (ADR-0028), golden.
+- Fail-closed hook command (ADR-0026).
 - Drift check (--check mode).
 - Hooks JSON shape.
 - Project settings template content.
@@ -25,17 +27,25 @@ from adapters.claude import build as b  # noqa: E402
 from adapters.lib.frontmatter import parse_frontmatter  # noqa: E402
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "core" / "valid"
+HUB_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "core" / "hub_two_spokes"
 
 
-def _build_into_tmp() -> Path:
+def _build_into_tmp(core_dir: Path = FIXTURE) -> Path:
+    """Build a fixture into a temp dir. build() also rewrites the repo's
+    policy/ownership.json and project-settings template, so restore them."""
     tmp = Path(tempfile.mkdtemp(prefix="mxagent-build-"))
-    # Build using the valid fixture
-    b.build(
-        core_dir=FIXTURE,
-        policy_dir=REPO_ROOT / "policy",
-        out_root=tmp / "mendix-agentic",
-        version="test-0.0.0",
-    )
+    side_outputs = (REPO_ROOT / "policy" / "ownership.json", b.PROJECT_SETTINGS_OUT)
+    saved = {p: p.read_bytes() for p in side_outputs if p.exists()}
+    try:
+        b.build(
+            core_dir=core_dir,
+            policy_dir=REPO_ROOT / "policy",
+            out_root=tmp / "mendix-agentic",
+            version="test-0.0.0",
+        )
+    finally:
+        for p, data in saved.items():
+            p.write_bytes(data)
     return tmp
 
 
@@ -61,8 +71,25 @@ class TestBuildFromFixture(unittest.TestCase):
         self.assertEqual(
             pre["matcher"], "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit"
         )
-        self.assertIn("${CLAUDE_PLUGIN_ROOT}", pre["hooks"][0]["command"])
-        self.assertIn("python", pre["hooks"][0]["command"].split()[0])
+        cmd = pre["hooks"][0]["command"]
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}", cmd)
+        self.assertEqual(cmd.split()[0], "python")
+        # ADR-0026: any non-zero exit becomes a blocking exit 2.
+        self.assertTrue(
+            cmd.endswith(
+                "|| { echo 'mendix-agentic guard could not run — run bin/doctor' >&2; exit 2; }"
+            ),
+            msg=cmd,
+        )
+
+    def test_plugin_readme_generated(self):
+        readme = (self.plugin / "README.md").read_text(encoding="utf-8")
+        self.assertIn("GENERATED", readme)
+        self.assertIn("never hand-edit", readme)
+
+    def test_plugin_display_name(self):
+        pj = json.loads((self.plugin / ".claude-plugin" / "plugin.json").read_text())
+        self.assertEqual(pj["displayName"], "Mendix Agentic")
 
     def test_agent_tools_mapped(self):
         txt = (self.plugin / "agents" / "orchestrator.md").read_text()
@@ -72,13 +99,11 @@ class TestBuildFromFixture(unittest.TestCase):
         # → tools: Read, Grep, Glob, Edit, Write, MultiEdit, Bash,
         #          AskUserQuestion, Agent(analyst,writer)
         tools = fm["tools"]
-        for expected in (
-            "Read", "Grep", "Glob", "Edit", "Write", "MultiEdit", "Bash",
-            "AskUserQuestion",
-        ):
-            self.assertIn(expected, tools, msg=f"missing {expected}")
-        self.assertTrue(
-            any("Agent(" in t for t in tools), msg=f"missing Agent(...) in {tools}"
+        self.assertIsInstance(tools, str)  # ADR-0028: never a YAML list
+        self.assertEqual(
+            tools,
+            "Read, Grep, Glob, Edit, Write, MultiEdit, Bash, AskUserQuestion, "
+            "Agent(mendix-agentic:analyst, mendix-agentic:writer)",
         )
         # Never emit PowerShell (ADR-0016).
         self.assertNotIn("PowerShell", tools)
@@ -121,20 +146,75 @@ class TestBuildFromFixture(unittest.TestCase):
         self.assertTrue((self.plugin / "skills" / "intake" / "SKILL.md").exists())
         self.assertTrue((self.plugin / "skills" / "mdl-draft" / "SKILL.md").exists())
 
-    def test_skill_sidecar_merged_into_metadata(self):
-        md = (self.plugin / "skills" / "mdl-draft" / "SKILL.md").read_text()
+    def test_skill_claude_fields_top_level_golden(self):
+        """ADR-0027: sidecar fields are top-level; metadata stays as in core."""
+        md = (self.plugin / "skills" / "mdl-draft" / "SKILL.md").read_text(encoding="utf-8")
+        frontmatter = md.split("\n---\n", 1)[0] + "\n---\n"
+        self.assertEqual(
+            frontmatter,
+            "---\n"
+            "name: mdl-draft\n"
+            'description: "Draft an MDL script that effects the requested model change. '
+            'Use when the writer needs an input script before running `mxcli check`."\n'
+            "license: Apache-2.0\n"
+            'compatibility: "Requires mxcli v0.26.0 or later"\n'
+            "metadata:\n"
+            "  tier: core\n"
+            "disable-model-invocation: true\n"
+            "user-invocable: true\n"
+            "allowed-tools:\n"
+            "  - Read\n"
+            "  - Grep\n"
+            "  - Glob\n"
+            '  - "Bash(mxcli:*)"\n'
+            "---\n",
+        )
         fm = parse_frontmatter(md, filename="SKILL.md").data
-        # Sidecar merged under metadata.claude as a JSON string
-        self.assertIn("metadata", fm)
-        self.assertIn("claude", fm["metadata"])
-        claude_blob = json.loads(fm["metadata"]["claude"])
-        self.assertTrue(claude_blob["user-invocable"])
-        self.assertIn("Bash(mxcli:*)", claude_blob["allowed-tools"])
+        self.assertIs(fm["disable-model-invocation"], True)
+        self.assertNotIn("claude", fm["metadata"])
+
+    def test_core_skill_stays_spec_only(self):
+        core_md = (FIXTURE / "skills" / "mdl-draft" / "SKILL.md").read_text(encoding="utf-8")
+        fm = parse_frontmatter(core_md, filename="SKILL.md").data
+        for key in b.CLAUDE_SKILL_FIELDS:
+            self.assertNotIn(key, fm)
 
     def test_policy_copied(self):
         self.assertTrue((self.plugin / "policy" / "mxcli_guard.py").exists())
         self.assertTrue((self.plugin / "policy" / "mxcli-commands.json").exists())
         self.assertTrue((self.plugin / "policy" / "stop-operations.json").exists())
+
+
+class TestHubToolsGolden(unittest.TestCase):
+    """ADR-0028: the hub delegating to two spokes emits one comma-separated
+    string, in capability-map order, with the spokes namespaced."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = _build_into_tmp(HUB_FIXTURE)
+        cls.plugin = cls.tmp / "mendix-agentic"
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_hub_tools_line(self):
+        text = (self.plugin / "agents" / "hub.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "\ntools: Read, Grep, Glob, "
+            "Agent(mendix-agentic:spoke-a, mendix-agentic:spoke-b)\n",
+            text,
+        )
+        self.assertNotIn("tools: [", text)
+        fm = parse_frontmatter(text, filename="hub.md").data
+        self.assertEqual(
+            fm["tools"],
+            "Read, Grep, Glob, Agent(mendix-agentic:spoke-a, mendix-agentic:spoke-b)",
+        )
+
+    def test_spoke_tools_line(self):
+        text = (self.plugin / "agents" / "spoke-a.md").read_text(encoding="utf-8")
+        self.assertIn("\ntools: Read\n", text)
 
 
 class TestCheckMode(unittest.TestCase):
@@ -182,8 +262,13 @@ class TestDeterminism(unittest.TestCase):
             self.assertEqual(diffs, [], msg=f"determinism broken: {diffs}")
 
     def test_no_absolute_paths_or_usernames_in_output(self):
+        import datetime
         import getpass
+        import re
+        import socket
         marker_user = getpass.getuser()
+        hostname = socket.gethostname()
+        year = str(datetime.date.today().year)
         with tempfile.TemporaryDirectory() as a:
             a_out = Path(a) / "mendix-agentic"
             b.build(
@@ -202,6 +287,17 @@ class TestDeterminism(unittest.TestCase):
                 self.assertNotIn(
                     workspace, content,
                     msg=f"{rel} contains the local workspace path",
+                )
+                if hostname:
+                    self.assertNotIn(
+                        hostname.lower().encode("utf-8"), content.lower(),
+                        msg=f"{rel} contains the hostname",
+                    )
+                # The current year as a standalone number (a date stamp);
+                # digits inside longer tokens such as SHA-256s don't count.
+                self.assertIsNone(
+                    re.search(rb"(?<![0-9A-Za-z])" + year.encode() + rb"(?![0-9A-Za-z])", content),
+                    msg=f"{rel} contains the current year {year}",
                 )
 
     def test_no_empty_directories(self):

@@ -19,6 +19,14 @@ from pathlib import Path
 
 MIN_PYTHON = (3, 10)
 MIN_MXCLI = (0, 26, 0)
+# ADR-0025: lowest Claude Code with every feature the plugin relies on.
+# Evidence per feature is in docs/version-matrix.md.
+MIN_CLAUDE_CODE = (2, 1, 281)
+CLAUDE_UPDATE_FIX = (
+    "run `claude update`; in VS Code also update the extension and restart"
+)
+# The plugin hook runs `python` (ADR-0026, docs/install.md).
+HOOK_PYTHON = "python"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -149,7 +157,64 @@ def check_claude_code() -> Result:
             f"`claude --version` returned {rc}: {err or 'empty output'}",
             fix="Ensure Claude Code is up to date (`claude update` or reinstall).",
         )
-    return Result("claude-code", "PASS", out.splitlines()[0])
+    return _claude_code_result(out.splitlines()[0])
+
+
+def _claude_code_result(version_line: str) -> Result:
+    minimum = ".".join(map(str, MIN_CLAUDE_CODE))
+    ver = _parse_version(version_line)
+    if ver is None:
+        return Result(
+            "claude-code",
+            "WARN",
+            f"could not parse Claude Code version from: {version_line!r}",
+            fix=f"Check that Claude Code is {minimum} or later; {CLAUDE_UPDATE_FIX}.",
+        )
+    if ver < MIN_CLAUDE_CODE:
+        return Result(
+            "claude-code",
+            "FAIL",
+            f"Claude Code {'.'.join(map(str, ver))} is below minimum {minimum}",
+            fix=CLAUDE_UPDATE_FIX + ".",
+        )
+    return Result("claude-code", "PASS", f"{version_line} (minimum {minimum})")
+
+
+def check_hook_python() -> Result:
+    """The plugin hook invokes `python`; it must resolve to >= MIN_PYTHON.
+
+    Doctor itself may run under `py -3` (bin/doctor.cmd), so this checks the
+    hook's interpreter separately. A missing or too-old `python` blocks every
+    guarded tool call (ADR-0026), so it is a FAIL when Claude Code is present.
+    """
+    status_if_bad = "FAIL" if shutil.which("claude") else "WARN"
+    minimum = f"{MIN_PYTHON[0]}.{MIN_PYTHON[1]}"
+    fix = (
+        f"Install Python {minimum}+ so `{HOOK_PYTHON}` is on PATH (python.org "
+        "installer: tick \"Add python.exe to PATH\"; on Windows also turn off the "
+        "python App execution aliases). See docs/install.md."
+    )
+    if shutil.which(HOOK_PYTHON) is None:
+        return Result("hook-python", status_if_bad, f"`{HOOK_PYTHON}` not on PATH", fix=fix)
+    rc, out, err = _run(
+        [HOOK_PYTHON, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"]
+    )
+    ver = _parse_version(out) if rc == 0 else None
+    if ver is None:
+        return Result(
+            "hook-python",
+            status_if_bad,
+            f"`{HOOK_PYTHON}` did not report a version (rc={rc}: {err or out or 'no output'})",
+            fix=fix,
+        )
+    if ver < MIN_PYTHON + (0,):
+        return Result(
+            "hook-python",
+            status_if_bad,
+            f"`{HOOK_PYTHON}` is {'.'.join(map(str, ver))}, below {minimum}",
+            fix=fix,
+        )
+    return Result("hook-python", "PASS", f"`{HOOK_PYTHON}` is {'.'.join(map(str, ver))}")
 
 
 def check_line_endings() -> Result:
@@ -247,6 +312,7 @@ CHECKS = (
     check_git,
     check_mxcli,
     check_claude_code,
+    check_hook_python,
     check_line_endings,
     check_no_crlf_in_scripts,
     check_studio_pro_override_env,

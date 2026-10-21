@@ -68,6 +68,13 @@ plugins or marketplace files.
    If a note holds only for mxcli ≥ v0.26.0 and Studio Pro 11.12 LTS, say so.
    See `docs/version-matrix.md`.
 
+## How to work here
+
+- One branch per phase; no phase starts until the previous one is merged to
+  `main` with green CI (ADR-0029).
+- Humans push and open PRs (GitHub Desktop or git). Agents commit locally
+  and report commits only; do not comment on push status. (ADR-0030)
+
 ## Verifying mxcli facts
 
 mxcli is upstream, moves, and we have been bitten before. For any mxcli claim

@@ -7,7 +7,7 @@ recursively over the command tree. Fails if the discovered command paths
 disagree with the inventory.
 
 Usage (CI):
-    python .github/scripts/check_mxcli_tree.py
+    python .github/scripts/check_mxcli_tree.py --cache-dir ~/.cache/mxcli
 
 Env:
     GITHUB_TOKEN   optional; raises the GitHub API rate limit when fetching
@@ -52,6 +52,21 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _obtain_verified(pin: dict, dest: Path) -> None:
+    """Make `dest` hold the pinned binary, verified. A cached copy (CI
+    restores one from actions/cache) is re-hashed before use; on mismatch it
+    is discarded and the asset downloaded again (ADR-0032)."""
+    if dest.exists():
+        data = dest.read_bytes()
+        if _sha256(data) == pin["sha256"] and len(data) == pin.get("size_bytes", len(data)):
+            dest.chmod(0o755)
+            print(f"Cache hit: verified sha256={pin['sha256']} ({len(data)} bytes) -> {dest}")
+            return
+        print(f"Cached {dest} does not match the pin; downloading again.")
+        dest.unlink()
+    _download_and_verify(pin, dest)
+
+
 def _download_and_verify(pin: dict, dest: Path) -> None:
     url = pin["download_url"]
     print(f"Downloading {pin['asset']} from {url}")
@@ -75,6 +90,7 @@ def _download_and_verify(pin: dict, dest: Path) -> None:
             f"ERROR: size mismatch - got {len(data)} bytes, pinned "
             f"{size_expected}. Update policy/mxcli-pin.json."
         )
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
     dest.chmod(0o755)
     print(f"Verified sha256={actual} ({len(data)} bytes) -> {dest}")
@@ -134,45 +150,56 @@ def _load_inventory_keys() -> set[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(description=__doc__).parse_args(argv)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--cache-dir",
+        help="keep the verified binary here between runs (CI restores it "
+        "with actions/cache); it is re-hashed against the pin before use",
+    )
+    args = ap.parse_args(argv)
 
     pin = _load_pin()
     print(f"Pinned mxcli: {pin['version']} ({pin['asset']})")
 
     with tempfile.TemporaryDirectory() as td:
-        binary = Path(td) / "mxcli"
-        _download_and_verify(pin, binary)
-        discovered = _walk_tree(binary)
-        inventory = _load_inventory_keys()
-        # The inventory contains the `list` alias of `show`; mxcli's --help
-        # does not expose it as a separate command. The built-in cobra
-        # `help` command is already filtered in _list_subcommands.
-        aliases = {"list"}
-        inventory_cmp = {k for k in inventory if k not in aliases and k != "help"}
+        base = Path(args.cache_dir) if args.cache_dir else Path(td)
+        binary = base / pin["asset"]
+        _obtain_verified(pin, binary)
+        return _compare(binary)
 
-        missing = sorted(discovered - inventory_cmp)
-        extra = sorted(inventory_cmp - discovered)
-        if missing:
-            print(
-                f"\nERROR: {len(missing)} command(s) in mxcli but not in inventory:",
-                file=sys.stderr,
-            )
-            for m in missing:
-                print(f"  + {m}", file=sys.stderr)
-        if extra:
-            print(
-                f"\nERROR: {len(extra)} command(s) in inventory but not in mxcli:",
-                file=sys.stderr,
-            )
-            for e in extra:
-                print(f"  - {e}", file=sys.stderr)
-        if missing or extra:
-            print(
-                "\nUpdate docs/research/mxcli-inventory.md and "
-                "policy/mxcli-commands.json, then rerun.",
-                file=sys.stderr,
-            )
-            return 1
+
+def _compare(binary: Path) -> int:
+    discovered = _walk_tree(binary)
+    inventory = _load_inventory_keys()
+    # The inventory contains the `list` alias of `show`; mxcli's --help
+    # does not expose it as a separate command. The built-in cobra
+    # `help` command is already filtered in _list_subcommands.
+    aliases = {"list"}
+    inventory_cmp = {k for k in inventory if k not in aliases and k != "help"}
+
+    missing = sorted(discovered - inventory_cmp)
+    extra = sorted(inventory_cmp - discovered)
+    if missing:
+        print(
+            f"\nERROR: {len(missing)} command(s) in mxcli but not in inventory:",
+            file=sys.stderr,
+        )
+        for m in missing:
+            print(f"  + {m}", file=sys.stderr)
+    if extra:
+        print(
+            f"\nERROR: {len(extra)} command(s) in inventory but not in mxcli:",
+            file=sys.stderr,
+        )
+        for e in extra:
+            print(f"  - {e}", file=sys.stderr)
+    if missing or extra:
+        print(
+            "\nUpdate docs/research/mxcli-inventory.md and "
+            "policy/mxcli-commands.json, then rerun.",
+            file=sys.stderr,
+        )
+        return 1
     print(f"OK: {len(discovered)} commands match inventory.")
     return 0
 

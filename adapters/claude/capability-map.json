@@ -1,5 +1,5 @@
 {
-  "_comment": "Maps canonical capability ids (from core/capabilities.json) to Claude Code tool names (per code.claude.com/docs/en/sub-agents). Each capability produces zero or more tool names in the subagent's `tools` list. `delegate` is special: the adapter expands it to Agent(<spoke>) entries using the role's delegates_to list. `web-read` only appears when the capability is on a role; the adapter never adds PowerShell (ADR-0016). The model_tier map resolves to a Claude model alias.",
+  "_comment": "Maps canonical capability ids (from core/capabilities.json) to Claude Code tool names (per code.claude.com/docs/en/sub-agents). Each capability produces zero or more tool names in the subagent's `tools` list. `delegate` is special: the adapter expands it to one Agent(mendix-agentic:<spoke>, ...) entry using the role's delegates_to list, namespaced because plugin agents register under <plugin>:<name> (ADR-0028). The emitted `tools` value is a comma-separated string, never a YAML flow list. `web-read` only appears when the capability is on a role; the adapter never adds PowerShell (ADR-0016). The model_tier map resolves to a Claude model alias.",
   "_schema": {
     "version": 1,
     "subagent_frontmatter_source": "https://code.claude.com/docs/en/sub-agents"

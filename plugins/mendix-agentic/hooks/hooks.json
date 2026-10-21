@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/policy/mxcli_guard.py\""
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/policy/mxcli_guard.py\" || { echo 'mendix-agentic guard could not run \u2014 run bin/doctor' >&2; exit 2; }"
           }
         ]
       }
