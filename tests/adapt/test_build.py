@@ -14,6 +14,8 @@ Covers:
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import sys
 import tempfile
@@ -238,6 +240,143 @@ class TestCheckMode(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
+def _path_forms(path: str) -> set[bytes]:
+    """Native, forward-slash and JSON-escaped (doubled backslash) spellings
+    of a path, also for its resolved form (e.g. a Windows 8.3 temp path)."""
+    forms: set[bytes] = set()
+    for p in {path, os.path.realpath(path)}:
+        p = p.rstrip("\\/")
+        for f in (p, p.replace("\\", "/"), p.replace("\\", "\\\\")):
+            forms.add(f.lower().encode("utf-8"))
+    return forms
+
+
+def _machine_leaks(
+    content: bytes, *, repo: str, home: str, tmp: str, user: str, host: str
+) -> list[str]:
+    """Machine-specific strings in `content`. A username or hostname is only
+    a leak as a path segment or a whole token; bare words such as `runner`
+    (the GitHub runner's user) occur legitimately in the inventory."""
+    leaks: list[str] = []
+    low = content.lower()
+    for label, path in (("repo path", repo), ("home dir", home), ("temp dir", tmp)):
+        for form in _path_forms(path):
+            if form in low:
+                leaks.append(f"{label} {form.decode()!r}")
+    if user:
+        u = re.escape(user.encode("utf-8"))
+        sep = rb"(?:\\\\|\\|/)"
+        for pattern in (
+            rb"/home/" + u + rb"/",
+            rb"/users/" + u + rb"/",
+            rb"[a-z]:" + sep + rb"users" + sep + u + sep,
+        ):
+            if re.search(pattern, content, re.IGNORECASE):
+                leaks.append(f"username path segment {pattern!r}")
+    if host and len(host) >= 6:
+        if re.search(rb"\b" + re.escape(host.encode("utf-8")) + rb"\b", content, re.IGNORECASE):
+            leaks.append(f"hostname {host!r}")
+    return leaks
+
+
+def _this_machine() -> dict[str, str]:
+    import getpass
+    import socket
+    return {
+        "repo": str(REPO_ROOT),
+        "home": os.path.expanduser("~"),
+        "tmp": tempfile.gettempdir(),
+        "user": getpass.getuser(),
+        "host": socket.gethostname(),
+    }
+
+
+def _scan_for_leaks(out_dir: Path, **machine: str) -> list[str]:
+    found: list[str] = []
+    for rel in sorted(b._list_files(out_dir)):
+        for leak in _machine_leaks(b._read_bytes_lf(out_dir / rel), **machine):
+            found.append(f"{rel}: {leak}")
+    return found
+
+
+class TestLeakCheck(unittest.TestCase):
+    """Controls for the determinism leak check: it must catch real leaks and
+    must not flag ordinary words that happen to equal the username."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="mxagent-leak-"))
+        cls.clean = cls.tmp / "clean"
+        b.build(
+            core_dir=REPO_ROOT / "core",
+            policy_dir=REPO_ROOT / "policy",
+            out_root=cls.clean,
+            version="test-0.0.0",
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _inject(self, text: str) -> Path:
+        dest = Path(tempfile.mkdtemp(dir=self.tmp)) / "out"
+        shutil.copytree(self.clean, dest)
+        target = dest / "policy" / "mxcli-commands.json"
+        target.write_bytes(target.read_bytes() + text.encode("utf-8"))
+        return dest
+
+    def _assert_caught(self, text: str, **machine: str):
+        ids = {**_this_machine(), **machine}
+        found = _scan_for_leaks(self._inject(text), **ids)
+        self.assertTrue(found, msg=f"leak not caught: {text!r}")
+
+    def test_home_path_caught(self):
+        home = os.path.expanduser("~")
+        for form in (home, home.replace("\\", "/"), home.replace("\\", "\\\\")):
+            self._assert_caught(f'"x": "{form}/notes"')
+
+    def test_repo_path_caught(self):
+        repo = str(REPO_ROOT)
+        for form in (repo, repo.replace("\\", "/"), repo.replace("\\", "\\\\")):
+            self._assert_caught(f"see {form}/policy")
+
+    def test_temp_path_caught(self):
+        tmp = tempfile.gettempdir()
+        for form in (tmp, tmp.replace("\\", "/"), tmp.replace("\\", "\\\\")):
+            self._assert_caught(f"built in {form}/x")
+
+    def test_windows_user_segment_caught(self):
+        for text in (
+            "C:\\Users\\runner\\x",        # native
+            '"C:\\\\Users\\\\runner\\\\x"',  # JSON-escaped
+            "d:/users/RUNNER/x",           # other drive, forward slash, case
+        ):
+            self._assert_caught(text, user="runner", home="/nonexistent-home")
+
+    def test_posix_user_segments_caught(self):
+        for text in ("/home/runner/work", "/Users/runner/Library"):
+            self._assert_caught(text, user="runner", home="/nonexistent-home")
+
+    def test_hostname_whole_token_caught(self):
+        self._assert_caught("built on buildbox-42 today", host="buildbox-42")
+
+    def test_common_word_username_not_flagged(self):
+        """CI's user is `runner`; the inventory says 'OQL query runner'."""
+        out = self._inject("an OQL query runner")
+        ids = {**_this_machine(), "user": "runner"}
+        self.assertEqual(_scan_for_leaks(out, **ids), [])
+
+    def test_hostname_inside_word_not_flagged(self):
+        out = self._inject("buildboxes and prebuildbox")
+        ids = {**_this_machine(), "host": "buildbox"}
+        self.assertEqual(_scan_for_leaks(out, **ids), [])
+
+    def test_short_hostname_skipped(self):
+        out = self._inject("my box")
+        ids = {**_this_machine(), "host": "box"}
+        self.assertEqual(_scan_for_leaks(out, **ids), [])
+
+
 class TestDeterminism(unittest.TestCase):
     """ADR-0031: two builds into different temp dirs produce identical bytes
     and never contain absolute paths, usernames, or timestamps."""
@@ -263,11 +402,7 @@ class TestDeterminism(unittest.TestCase):
 
     def test_no_absolute_paths_or_usernames_in_output(self):
         import datetime
-        import getpass
         import re
-        import socket
-        marker_user = getpass.getuser()
-        hostname = socket.gethostname()
         year = str(datetime.date.today().year)
         with tempfile.TemporaryDirectory() as a:
             a_out = Path(a) / "mendix-agentic"
@@ -277,22 +412,9 @@ class TestDeterminism(unittest.TestCase):
                 out_root=a_out,
                 version="test-0.0.0",
             )
-            workspace = str(REPO_ROOT).encode("utf-8")
+            self.assertEqual(_scan_for_leaks(a_out, **_this_machine()), [])
             for rel in b._list_files(a_out):
                 content = b._read_bytes_lf(a_out / rel)
-                self.assertNotIn(
-                    marker_user.encode("utf-8"), content,
-                    msg=f"{rel} contains the local username",
-                )
-                self.assertNotIn(
-                    workspace, content,
-                    msg=f"{rel} contains the local workspace path",
-                )
-                if hostname:
-                    self.assertNotIn(
-                        hostname.lower().encode("utf-8"), content.lower(),
-                        msg=f"{rel} contains the hostname",
-                    )
                 # The current year as a standalone number (a date stamp);
                 # digits inside longer tokens such as SHA-256s don't count.
                 self.assertIsNone(
